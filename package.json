@@ -1,0 +1,36 @@
+{
+  "name": "envguard",
+  "version": "0.1.0",
+  "description": "CLI tool to keep environment variables in sync with your codebase",
+  "main": "dist/index.js",
+  "bin": {
+    "envguard": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/cli.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "environment",
+    "env",
+    "dotenv",
+    "config",
+    "security"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
+    "dotenv": "^16.3.1",
+    "glob": "^10.3.10",
+    "js-yaml": "^4.1.1"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.10.6",
+    "typescript": "^5.3.3"
+  }
+}

@@ -1,0 +1,50 @@
+service: ${self:app}-lambda2
+app: my-app
+
+custom:  
+  cors-config:
+    origins:
+      - '*'
+    headers:
+      - Content-Type
+      - X-Amz-Date
+      - Authorization
+      - X-Api-Key
+      - X-Amz-Security-Token
+      - X-Amz-User-Agent
+      - token
+      - env
+      - provider      
+    allowCredentials: false  
+  
+  secrets_INTERNAL_KEYS: ${ssm:/aws/reference/secretsmanager/${self:app}/${opt:stage, self:provider.stage}/internal-keys}
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  memorySize: 8192
+  tags:
+    Product: ${opt:stage, self:provider.stage}-${self:app}
+  profile: abc
+  stage: dev
+  region: eu-central-1
+  deploymentBucket:
+    name: ${self:app}-deployment
+  versionFunctions: false
+  timeout: 29
+  environment:
+    NODE_ENV: ${file(./.env.yml):${opt:stage, self:provider.stage}.NODE_ENV}
+    STAGE: ${opt:stage, self:provider.stage}
+    OKTA_CLIENT_ID: ${self:custom.secrets_INTERNAL_KEYS.okta_client_id}
+    OKTA_API_PATH: ${self:custom.secrets_INTERNAL_KEYS.okta_api_path}
+
+functions:
+  getPermissions:
+    handler: handler.getPermissions
+    description: 'Retrieves a list of all permissions available in the system.'
+    events:
+      - http:
+          path: /permissions
+          method: get
+          cors: ${self:custom.cors-config}         
+
