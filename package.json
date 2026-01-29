@@ -5,6 +5,10 @@
   "main": "dist/index.js",
   "bin": {
     "envguard": "./dist/cli.js"
+  },     
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/szlaskidaniel/envguard"
   },
   "scripts": {
     "build": "tsc",
@@ -19,7 +23,7 @@
     "config",
     "security"
   ],
-  "author": "",
+  "author": "Daniel Szlaski",
   "license": "MIT",
   "dependencies": {
     "chalk": "^4.1.2",
