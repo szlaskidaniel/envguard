@@ -20,4 +20,4 @@ jobs:
           node-version: '20.x'
       
       - name: Run EnvGuard check
-        run: npm @danielszlaski/envguard check
+        run: npm -i @danielszlaski/envguard check
