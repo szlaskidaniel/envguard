@@ -3,6 +3,8 @@ import * as path from 'path';
 import { glob } from 'glob';
 import { ServerlessParser } from '../parser/serverlessParser';
 
+
+
 export class CodeScanner {
   private rootDir: string;
   private excludePatterns: string[];
@@ -18,9 +20,14 @@ export class CodeScanner {
     const envVars = new Map<string, string[]>();
 
     // Scan for JavaScript/TypeScript files
+    // Handle both simple names (e.g., 'node_modules') and glob patterns (e.g., '**/tmp/**')
+    const ignorePatterns = this.excludePatterns.map(p =>
+      p.includes('*') ? p : `**/${p}/**`
+    );
+
     const files = await glob('**/*.{js,ts,jsx,tsx,mjs,cjs}', {
       cwd: this.rootDir,
-      ignore: this.excludePatterns.map(p => `**/${p}/**`),
+      ignore: ignorePatterns,
       absolute: true,
     });
 
@@ -92,9 +99,13 @@ export class CodeScanner {
   }
 
   async findEnvFiles(): Promise<string[]> {
+    const ignorePatterns = this.excludePatterns.map(p =>
+      p.includes('*') ? p : `**/${p}/**`
+    );
+
     const envFiles = await glob('**/.env', {
       cwd: this.rootDir,
-      ignore: this.excludePatterns.map(p => `**/${p}/**`),
+      ignore: ignorePatterns,
       absolute: true,
     });
 
@@ -102,9 +113,13 @@ export class CodeScanner {
   }
 
   async findServerlessFiles(): Promise<string[]> {
+    const ignorePatterns = this.excludePatterns.map(p =>
+      p.includes('*') ? p : `**/${p}/**`
+    );
+
     const serverlessFiles = await glob('**/serverless.{yml,yaml}', {
       cwd: this.rootDir,
-      ignore: this.excludePatterns.map(p => `**/${p}/**`),
+      ignore: ignorePatterns,
       absolute: true,
     });
 
@@ -120,9 +135,13 @@ export class CodeScanner {
     const dirMap = new Map<string, Map<string, string[]>>();
 
     // Scan for JavaScript/TypeScript files
+    const ignorePatterns = this.excludePatterns.map(p =>
+      p.includes('*') ? p : `**/${p}/**`
+    );
+
     const files = await glob('**/*.{js,ts,jsx,tsx,mjs,cjs}', {
       cwd: this.rootDir,
-      ignore: this.excludePatterns.map(p => `**/${p}/**`),
+      ignore: ignorePatterns,
       absolute: true,
     });
 

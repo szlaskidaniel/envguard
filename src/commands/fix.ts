@@ -10,8 +10,19 @@ export async function fixCommand() {
 
   Logger.startSpinner('Generating .env.example files...');
 
+  // Load configuration
+  const { ConfigLoader } = require('../config/configLoader');
+  const config = ConfigLoader.loadConfig(rootDir);
+
   // Step 1: Find all .env files
-  const scanner = new CodeScanner(rootDir);
+  const excludePatterns = [
+    'node_modules',
+    'dist',
+    'build',
+    '.git',
+    ...(config.exclude || []),
+  ];
+  const scanner = new CodeScanner(rootDir, excludePatterns);
   const envFiles = await scanner.findEnvFiles();
 
   Logger.stopSpinner();
@@ -38,7 +49,21 @@ export async function fixCommand() {
     Logger.path(`Processing ${displayPath}/`);
 
     // Step 3: Scan code files in this directory and subdirectories
-    const usedVars = await scanDirectoryForVars(rootDir, envDir, scanner);
+    const allUsedVars = await scanDirectoryForVars(rootDir, envDir, scanner, config.exclude);
+
+    // Filter out ignored variables based on config (they shouldn't be in .env.example)
+    const { isKnownRuntimeVar } = require('../constants/knownEnvVars');
+    const usedVars = new Map<string, string[]>();
+
+    for (const [varName, locations] of allUsedVars.entries()) {
+      const isCustomIgnored = ConfigLoader.shouldIgnoreVar(varName, config);
+      const isRuntimeVar = isKnownRuntimeVar(varName);
+
+      // Skip known runtime variables and custom ignore vars
+      if (!isRuntimeVar && !isCustomIgnored) {
+        usedVars.set(varName, locations);
+      }
+    }
 
     if (usedVars.size === 0) {
       Logger.info('No environment variables found in code', true);
@@ -82,7 +107,8 @@ export async function fixCommand() {
 async function scanDirectoryForVars(
   rootDir: string,
   targetDir: string,
-  scanner: CodeScanner
+  scanner: CodeScanner,
+  excludePatterns: string[] = []
 ): Promise<Map<string, string[]>> {
   const envVars = new Map<string, string[]>();
   const { glob } = require('glob');
@@ -91,9 +117,12 @@ async function scanDirectoryForVars(
   const relativeDir = path.relative(rootDir, targetDir);
   const pattern = relativeDir ? `${relativeDir}/**/*.{js,ts,jsx,tsx,mjs,cjs}` : '**/*.{js,ts,jsx,tsx,mjs,cjs}';
 
+  const defaultIgnore = ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**'];
+  const customIgnore = excludePatterns.map(p => p.includes('*') ? p : `**/${p}/**`);
+
   const files = await glob(pattern, {
     cwd: rootDir,
-    ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**'],
+    ignore: [...defaultIgnore, ...customIgnore],
     absolute: true,
   });
 

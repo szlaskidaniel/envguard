@@ -22,7 +22,14 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
   Logger.startSpinner('Scanning codebase for environment variables...');
 
   // Step 1: Find all .env files and serverless.yml files
-  const scanner = new CodeScanner(rootDir);
+  const excludePatterns = [
+    'node_modules',
+    'dist',
+    'build',
+    '.git',
+    ...(config.exclude || []),
+  ];
+  const scanner = new CodeScanner(rootDir, excludePatterns);
   const envFiles = await scanner.findEnvFiles();
   const serverlessFiles = await scanner.findServerlessFiles();
 
@@ -55,7 +62,7 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
     Logger.info(`Found ${serverlessVars.size} variable(s) in serverless.yml`, true);
 
     // Scan code files in this directory to see what's actually used
-    const usedVars = await scanDirectoryForCodeVars(rootDir, serverlessDir, scanner);
+    const usedVars = await scanDirectoryForCodeVars(rootDir, serverlessDir, scanner, config.exclude);
     Logger.info(`Found ${usedVars.size} variable(s) used in code`, true);
     Logger.blank();
 
@@ -155,7 +162,26 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
     Logger.blank();
 
     // Step 3: Scan code files in this directory and subdirectories
-    const usedVars = await scanDirectoryForVars(rootDir, envDir, scanner);
+    const allUsedVars = await scanDirectoryForVars(rootDir, envDir, scanner, config.exclude);
+
+    // Filter out ignored variables based on config
+    const usedVars = new Map<string, string[]>();
+    const skippedVarsInScope: Array<{ varName: string; category: string }> = [];
+
+    for (const [varName, locations] of allUsedVars.entries()) {
+      const isCustomIgnored = ConfigLoader.shouldIgnoreVar(varName, config);
+      const isRuntimeVar = isKnownRuntimeVar(varName);
+
+      // In non-strict mode, skip known runtime variables and custom ignore vars
+      if (strictMode || (!isRuntimeVar && !isCustomIgnored)) {
+        usedVars.set(varName, locations);
+      } else {
+        const category = isCustomIgnored ? 'Custom (from config)' : getRuntimeVarCategory(varName);
+        if (category) {
+          skippedVarsInScope.push({ varName, category });
+        }
+      }
+    }
 
     Logger.info(`Found ${usedVars.size} variable(s) used in this scope`, true);
 
@@ -210,6 +236,23 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
       Logger.success('No issues in this directory', true);
       Logger.blank();
     }
+
+    // Show skipped variables in non-strict mode
+    if (!strictMode && skippedVarsInScope.length > 0) {
+      Logger.info('Skipped known runtime/ignored variables (use --strict to show):', true);
+      // Group by category
+      const grouped = new Map<string, string[]>();
+      for (const { varName, category } of skippedVarsInScope) {
+        if (!grouped.has(category)) {
+          grouped.set(category, []);
+        }
+        grouped.get(category)!.push(varName);
+      }
+      for (const [category, vars] of grouped.entries()) {
+        Logger.info(`${category}: ${vars.join(', ')}`, true);
+      }
+      Logger.blank();
+    }
   }
 
   // Display summary
@@ -242,7 +285,8 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
 async function scanDirectoryForVars(
   rootDir: string,
   targetDir: string,
-  scanner: CodeScanner
+  scanner: CodeScanner,
+  excludePatterns: string[] = []
 ): Promise<Map<string, string[]>> {
   const envVars = new Map<string, string[]>();
 
@@ -250,9 +294,12 @@ async function scanDirectoryForVars(
   const relativeDir = path.relative(rootDir, targetDir);
   const pattern = relativeDir ? `${relativeDir}/**/*.{js,ts,jsx,tsx,mjs,cjs}` : '**/*.{js,ts,jsx,tsx,mjs,cjs}';
 
+  const defaultIgnore = ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**'];
+  const customIgnore = excludePatterns.map(p => p.includes('*') ? p : `**/${p}/**`);
+
   const files = await glob(pattern, {
     cwd: rootDir,
-    ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**'],
+    ignore: [...defaultIgnore, ...customIgnore],
     absolute: true,
   });
 
@@ -274,7 +321,8 @@ async function scanDirectoryForVars(
 async function scanDirectoryForCodeVars(
   rootDir: string,
   targetDir: string,
-  scanner: CodeScanner
+  scanner: CodeScanner,
+  excludePatterns: string[] = []
 ): Promise<Map<string, string[]>> {
   const envVars = new Map<string, string[]>();
 
@@ -282,9 +330,12 @@ async function scanDirectoryForCodeVars(
   const relativeDir = path.relative(rootDir, targetDir);
   const pattern = relativeDir ? `${relativeDir}/**/*.{js,ts,jsx,tsx,mjs,cjs}` : '**/*.{js,ts,jsx,tsx,mjs,cjs}';
 
+  const defaultIgnore = ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**'];
+  const customIgnore = excludePatterns.map(p => p.includes('*') ? p : `**/${p}/**`);
+
   const files = await glob(pattern, {
     cwd: rootDir,
-    ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**'],
+    ignore: [...defaultIgnore, ...customIgnore],
     absolute: true,
   });
 
