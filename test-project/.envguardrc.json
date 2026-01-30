@@ -1,7 +1,0 @@
-{
-  "ignoreVars": [
-    "STAGE",
-    "OKTA_API_PATH"
-  ],
-  "strict": false
-}

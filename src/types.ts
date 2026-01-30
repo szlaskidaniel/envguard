@@ -1,6 +1,7 @@
 export interface EnvUsage {
   varName: string;
   locations: string[];
+  hasFallback?: boolean; // Whether the usage has a safe fallback/default
 }
 
 export interface EnvDefinition {
@@ -13,6 +14,7 @@ export interface EnvDefinition {
 
 export interface Issue {
   type: 'missing' | 'unused' | 'undocumented';
+  severity: 'error' | 'warning' | 'info';
   varName: string;
   details: string;
   locations?: string[];
@@ -20,7 +22,7 @@ export interface Issue {
 
 export interface ScanResult {
   issues: Issue[];
-  usedVars: Map<string, string[]>;
+  usedVars: Map<string, { locations: string[], hasFallback: boolean }>;
   definedVars: Set<string>;
   exampleVars: Set<string>;
 }

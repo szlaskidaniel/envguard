@@ -341,6 +341,7 @@ Create a `.envguardrc.json` file in your project root to customize behavior:
     "COMPANY_INTERNAL_VAR"
   ],
   "strict": false,
+  "detectFallbacks": true,
   "exclude": [
     "**/build/**",
     "**/tmp/**"
@@ -352,6 +353,7 @@ Create a `.envguardrc.json` file in your project root to customize behavior:
 
 - `ignoreVars` (string[]): Custom environment variables to ignore in non-strict mode. These will be treated like AWS_REGION and won't trigger warnings.
 - `strict` (boolean): Enable strict mode by default (can be overridden with CLI flag)
+- `detectFallbacks` (boolean): Detect fallback patterns in code and treat them as warnings instead of errors (default: `true`)
 - `exclude` (string[]): Additional file patterns to exclude from scanning
 
 **Alternative: package.json**
@@ -377,6 +379,62 @@ You can also add configuration to your `package.json`:
 
 **GitHub Apps & CI/CD:**
 When using EnvGuard as a GitHub App or in CI/CD pipelines, commit your `.envguardrc.json` to the repository. This ensures consistent behavior across all environments and team members.
+
+### Fallback Detection (Smart Severity)
+
+EnvGuard automatically detects common defensive patterns in your code and adjusts issue severity accordingly. When a variable is used with a fallback or default value, it's treated as a **WARNING** instead of an **ERROR**.
+
+**Detected patterns:**
+
+```javascript
+// Default values with || or ??
+const port = process.env.PORT || 3000;              // WARNING
+const url = process.env.API_URL ?? 'localhost';     // WARNING
+
+// Ternary operators
+const env = process.env.NODE_ENV ? 'set' : 'dev';   // WARNING
+
+// Conditional checks
+if (process.env.FEATURE_FLAG) { }                   // WARNING
+if (!process.env.DEBUG) { }                         // WARNING
+
+// Destructuring with defaults
+const { LOG_LEVEL = 'info' } = process.env;         // WARNING
+
+// Optional chaining
+const value = process.env?.OPTIONAL_VAR;            // WARNING
+
+// No fallback - strict requirement
+const apiKey = process.env.API_KEY;                 // ERROR
+```
+
+**Severity levels:**
+
+- **ERROR** (✖): Variable used without any safety mechanism - likely to cause runtime errors
+- **WARNING** (⚠): Variable used with fallback/default - code handles missing values
+- **INFO** (ℹ): Unused variables or optional documentation issues
+
+**Disable fallback detection:**
+
+If you prefer all missing variables to be treated as errors regardless of fallbacks:
+
+```bash
+# CLI flag
+envguard scan --no-detect-fallbacks
+
+# Config file
+{
+  "detectFallbacks": false
+}
+```
+
+**Why this feature exists:**
+
+Not all missing environment variables are equal. Variables with defensive fallbacks are less critical than those that will cause `undefined` errors. This feature helps you prioritize what to fix first while still being aware of all env var usage.
+
+**Limitations:**
+
+Fallback detection uses regex patterns and catches common cases (~80% of real-world usage). Complex patterns like function calls with fallbacks or deeply nested conditionals may not be detected. For strict validation, use `--no-detect-fallbacks` or set `detectFallbacks: false` in your config.
 
 ### Monorepo Support
 
@@ -451,9 +509,11 @@ Checking src/lambda/serverless.yml
 - `envguard scan` - Scan for issues and display report
 - `envguard scan --ci` - Scan and exit with error code if issues found
 - `envguard scan --strict` - Report all variables including known runtime variables
+- `envguard scan --no-detect-fallbacks` - Treat all missing variables as errors (ignore fallback detection)
 - `envguard fix` - Auto-generate `.env.example`
 - `envguard check` - Alias for `scan --ci`
 - `envguard check --strict` - Check with strict mode enabled
+- `envguard check --no-detect-fallbacks` - Check without fallback detection
 
 ### Strict Mode
 
@@ -493,4 +553,4 @@ npm start scan
 
 ## License
 
-MIT
+MIT 2026 Daniel Szlaski

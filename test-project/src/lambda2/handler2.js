@@ -1,5 +1,5 @@
 
-const OKTA_KEY = process.env.OKTA_DEV_CLIENT_ID;
+const OKTA_KEY = process.env.OKTA_DEV_CLIENT_ID || 'NOT_SET';
 
 const client = new SecretsManagerClient({ region: process.env.AWS_REGION });
 

@@ -17,12 +17,20 @@ export interface EnvGuardConfig {
    * Enable strict mode by default
    */
   strict?: boolean;
+
+  /**
+   * Detect fallback patterns in code (||, ??, conditionals, etc.)
+   * When enabled, variables with fallbacks are treated as warnings instead of errors
+   * Default: true
+   */
+  detectFallbacks?: boolean;
 }
 
 const DEFAULT_CONFIG: EnvGuardConfig = {
   ignoreVars: [],
   exclude: [],
   strict: false,
+  detectFallbacks: true,
 };
 
 const CONFIG_FILE_NAMES = [

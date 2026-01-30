@@ -10,7 +10,7 @@ import { isKnownRuntimeVar, getRuntimeVarCategory } from '../constants/knownEnvV
 import { ConfigLoader } from '../config/configLoader';
 import { Logger } from '../utils/logger';
 
-export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
+export async function scanCommand(options: { ci?: boolean; strict?: boolean; detectFallbacks?: boolean }) {
   const rootDir = process.cwd();
 
   // Load configuration
@@ -18,6 +18,7 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
 
   // CLI options override config file
   const strictMode = options.strict !== undefined ? options.strict : config.strict;
+  const detectFallbacks = options.detectFallbacks !== undefined ? options.detectFallbacks : (config.detectFallbacks !== undefined ? config.detectFallbacks : true);
 
   Logger.startSpinner('Scanning codebase for environment variables...');
 
@@ -79,10 +80,10 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
     }
 
     // Check for variables used in code but not defined in serverless.yml
-    const missingFromServerless: Array<{ varName: string; locations: string[]; category?: string }> = [];
+    const missingFromServerless: Array<{ varName: string; locations: string[]; hasFallback: boolean; category?: string }> = [];
     const skippedRuntimeVars: Array<{ varName: string; category: string }> = [];
 
-    for (const [varName, locations] of usedVars.entries()) {
+    for (const [varName, usage] of usedVars.entries()) {
       if (!serverlessVars.has(varName)) {
         // In non-strict mode, skip known runtime variables and custom ignore vars
         const isCustomIgnored = ConfigLoader.shouldIgnoreVar(varName, config);
@@ -94,17 +95,18 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
             skippedRuntimeVars.push({ varName, category });
           }
         } else {
-          missingFromServerless.push({ varName, locations });
+          missingFromServerless.push({ varName, locations: usage.locations, hasFallback: usage.hasFallback });
         }
       }
     }
 
     if (unusedServerlessVars.length > 0) {
-      Logger.warning('Unused variables in serverless.yml:', true);
+      Logger.info('Unused variables in serverless.yml:', true);
       unusedServerlessVars.forEach((varName) => {
-        Logger.warningItem(varName, 2);
+        Logger.infoItem(varName, 2);
         allIssues.push({
           type: 'unused',
+          severity: 'info',
           varName,
           details: `Defined in serverless.yml but never used in code`,
         });
@@ -113,20 +115,48 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
     }
 
     if (missingFromServerless.length > 0) {
-      Logger.error('Missing from serverless.yml:', true);
-      missingFromServerless.forEach((item) => {
-        Logger.errorItem(item.varName, 2);
-        if (item.locations && item.locations.length > 0) {
-          Logger.info(`Used in: ${item.locations.slice(0, 2).join(', ')}`, true);
-        }
-        allIssues.push({
-          type: 'missing',
-          varName: item.varName,
-          details: `Used in code but not defined in serverless.yml`,
-          locations: item.locations,
+      // Group by severity (respect detectFallbacks config)
+      const errors = missingFromServerless.filter(item => !detectFallbacks || !item.hasFallback);
+      const warnings = missingFromServerless.filter(item => detectFallbacks && item.hasFallback);
+
+      if (errors.length > 0) {
+        Logger.error('Missing from serverless.yml:', true);
+        errors.forEach((item) => {
+          Logger.errorItem(item.varName, 2);
+          if (item.locations && item.locations.length > 0) {
+            Logger.info(`Used in: ${item.locations.slice(0, 2).join(', ')}`, true);
+          }
+          const details = (detectFallbacks && item.hasFallback)
+            ? `Used in code with fallback but not defined in serverless.yml`
+            : `Used in code but not defined in serverless.yml`;
+          allIssues.push({
+            type: 'missing',
+            severity: 'error',
+            varName: item.varName,
+            details,
+            locations: item.locations,
+          });
         });
-      });
-      Logger.blank();
+        Logger.blank();
+      }
+
+      if (warnings.length > 0) {
+        Logger.warning('Missing from serverless.yml (with fallback):', true);
+        warnings.forEach((item) => {
+          Logger.warningItem(item.varName, 2);
+          if (item.locations && item.locations.length > 0) {
+            Logger.info(`Used in: ${item.locations.slice(0, 2).join(', ')}`, true);
+          }
+          allIssues.push({
+            type: 'missing',
+            severity: 'warning',
+            varName: item.varName,
+            details: `Used in code with fallback but not defined in serverless.yml`,
+            locations: item.locations,
+          });
+        });
+        Logger.blank();
+      }
     }
 
     if (unusedServerlessVars.length === 0 && missingFromServerless.length === 0) {
@@ -165,16 +195,16 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
     const allUsedVars = await scanDirectoryForVars(rootDir, envDir, scanner, config.exclude);
 
     // Filter out ignored variables based on config
-    const usedVars = new Map<string, string[]>();
+    const usedVars = new Map<string, { locations: string[], hasFallback: boolean }>();
     const skippedVarsInScope: Array<{ varName: string; category: string }> = [];
 
-    for (const [varName, locations] of allUsedVars.entries()) {
+    for (const [varName, usage] of allUsedVars.entries()) {
       const isCustomIgnored = ConfigLoader.shouldIgnoreVar(varName, config);
       const isRuntimeVar = isKnownRuntimeVar(varName);
 
       // In non-strict mode, skip known runtime variables and custom ignore vars
       if (strictMode || (!isRuntimeVar && !isCustomIgnored)) {
-        usedVars.set(varName, locations);
+        usedVars.set(varName, usage);
       } else {
         const category = isCustomIgnored ? 'Custom (from config)' : getRuntimeVarCategory(varName);
         if (category) {
@@ -196,17 +226,19 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
     Logger.blank();
 
     // Step 6: Analyze and find issues
-    const result = analyzer.analyze(usedVars, definedVars, exampleVars);
+    const result = analyzer.analyze(usedVars, definedVars, exampleVars, detectFallbacks);
 
     if (result.issues.length > 0) {
-      // Group issues by type
-      const missingIssues = result.issues.filter(i => i.type === 'missing');
+      // Group issues by type and severity
+      const missingErrors = result.issues.filter(i => i.type === 'missing' && i.severity === 'error');
+      const missingWarnings = result.issues.filter(i => i.type === 'missing' && i.severity === 'warning');
       const unusedIssues = result.issues.filter(i => i.type === 'unused');
-      const undocumentedIssues = result.issues.filter(i => i.type === 'undocumented');
+      const undocumentedWarnings = result.issues.filter(i => i.type === 'undocumented' && i.severity === 'warning');
+      const undocumentedInfo = result.issues.filter(i => i.type === 'undocumented' && i.severity === 'info');
 
-      if (missingIssues.length > 0) {
+      if (missingErrors.length > 0) {
         Logger.error('Missing from .env:', true);
-        missingIssues.forEach((issue) => {
+        missingErrors.forEach((issue) => {
           Logger.errorItem(issue.varName, 2);
           if (issue.locations && issue.locations.length > 0) {
             Logger.info(`Used in: ${issue.locations.slice(0, 2).join(', ')}`, true);
@@ -215,17 +247,36 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
         Logger.blank();
       }
 
+      if (missingWarnings.length > 0) {
+        Logger.warning('Missing from .env (with fallback):', true);
+        missingWarnings.forEach((issue) => {
+          Logger.warningItem(issue.varName, 2);
+          if (issue.locations && issue.locations.length > 0) {
+            Logger.info(`Used in: ${issue.locations.slice(0, 2).join(', ')}`, true);
+          }
+        });
+        Logger.blank();
+      }
+
       if (unusedIssues.length > 0) {
-        Logger.warning('Unused variables:', true);
+        Logger.info('Unused variables:', true);
         unusedIssues.forEach((issue) => {
+          Logger.infoItem(issue.varName, 2);
+        });
+        Logger.blank();
+      }
+
+      if (undocumentedWarnings.length > 0) {
+        Logger.warning('Missing from .env.example:', true);
+        undocumentedWarnings.forEach((issue) => {
           Logger.warningItem(issue.varName, 2);
         });
         Logger.blank();
       }
 
-      if (undocumentedIssues.length > 0) {
-        Logger.info('Missing from .env.example:', true);
-        undocumentedIssues.forEach((issue) => {
+      if (undocumentedInfo.length > 0) {
+        Logger.info('Missing from .env.example (with fallback):', true);
+        undocumentedInfo.forEach((issue) => {
           Logger.infoItem(issue.varName, 2);
         });
         Logger.blank();
@@ -262,8 +313,23 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
     return { success: true, issues: [] };
   }
 
+  // Count issues by severity
+  const errorCount = allIssues.filter(i => i.severity === 'error').length;
+  const warningCount = allIssues.filter(i => i.severity === 'warning').length;
+  const infoCount = allIssues.filter(i => i.severity === 'info').length;
+
   Logger.blank();
-  Logger.warning(`Total: ${allIssues.length} issue(s) across ${envFiles.length} location(s)`);
+  if (errorCount > 0) {
+    Logger.error(`Errors: ${errorCount}`, false);
+  }
+  if (warningCount > 0) {
+    Logger.warning(`Warnings: ${warningCount}`, false);
+  }
+  if (infoCount > 0) {
+    Logger.info(`Info: ${infoCount}`, false);
+  }
+  Logger.blank();
+  Logger.warning(`Total: ${allIssues.length} issue(s) across ${envFiles.length + serverlessFiles.length} location(s)`);
   Logger.blank();
 
   // Suggest fix
@@ -287,8 +353,8 @@ async function scanDirectoryForVars(
   targetDir: string,
   scanner: CodeScanner,
   excludePatterns: string[] = []
-): Promise<Map<string, string[]>> {
-  const envVars = new Map<string, string[]>();
+): Promise<Map<string, { locations: string[], hasFallback: boolean }>> {
+  const envVars = new Map<string, { locations: string[], hasFallback: boolean }>();
 
   // Find all code files in this directory and subdirectories
   const relativeDir = path.relative(rootDir, targetDir);
@@ -305,12 +371,14 @@ async function scanDirectoryForVars(
 
   for (const file of files) {
     const vars = await scanner.scanFile(file);
-    for (const varName of vars) {
+    for (const [varName, hasFallback] of vars.entries()) {
       const relativePath = path.relative(rootDir, file);
       if (!envVars.has(varName)) {
-        envVars.set(varName, []);
+        envVars.set(varName, { locations: [], hasFallback: false });
       }
-      envVars.get(varName)!.push(relativePath);
+      const entry = envVars.get(varName)!;
+      entry.locations.push(relativePath);
+      entry.hasFallback = entry.hasFallback || hasFallback;
     }
   }
 
@@ -323,8 +391,8 @@ async function scanDirectoryForCodeVars(
   targetDir: string,
   scanner: CodeScanner,
   excludePatterns: string[] = []
-): Promise<Map<string, string[]>> {
-  const envVars = new Map<string, string[]>();
+): Promise<Map<string, { locations: string[], hasFallback: boolean }>> {
+  const envVars = new Map<string, { locations: string[], hasFallback: boolean }>();
 
   // Find all code files in this directory only (not subdirectories for serverless)
   const relativeDir = path.relative(rootDir, targetDir);
@@ -341,12 +409,14 @@ async function scanDirectoryForCodeVars(
 
   for (const file of files) {
     const vars = await scanner.scanFile(file);
-    for (const varName of vars) {
+    for (const [varName, hasFallback] of vars.entries()) {
       const relativePath = path.relative(rootDir, file);
       if (!envVars.has(varName)) {
-        envVars.set(varName, []);
+        envVars.set(varName, { locations: [], hasFallback: false });
       }
-      envVars.get(varName)!.push(relativePath);
+      const entry = envVars.get(varName)!;
+      entry.locations.push(relativePath);
+      entry.hasFallback = entry.hasFallback || hasFallback;
     }
   }
 

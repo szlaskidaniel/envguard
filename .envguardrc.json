@@ -6,11 +6,11 @@
     "VAR_NAME"
   ],
   "strict": false,
+  "detectFallbacks": true,
   "exclude": [
     "**/tmp/**",
     "**/cache/**",
     "**/node_modules/**",
-    "**/dist/**",
-    "test-project"
+    "**/dist/**"    
   ]
 }

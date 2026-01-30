@@ -16,8 +16,8 @@ export class CodeScanner {
     this.serverlessParser = new ServerlessParser();
   }
 
-  async scan(): Promise<Map<string, string[]>> {
-    const envVars = new Map<string, string[]>();
+  async scan(): Promise<Map<string, { locations: string[], hasFallback: boolean }>> {
+    const envVars = new Map<string, { locations: string[], hasFallback: boolean }>();
 
     // Scan for JavaScript/TypeScript files
     // Handle both simple names (e.g., 'node_modules') and glob patterns (e.g., '**/tmp/**')
@@ -33,12 +33,15 @@ export class CodeScanner {
 
     for (const file of files) {
       const vars = await this.scanFile(file);
-      for (const varName of vars) {
+      for (const [varName, hasFallback] of vars.entries()) {
         const relativePath = path.relative(this.rootDir, file);
         if (!envVars.has(varName)) {
-          envVars.set(varName, []);
+          envVars.set(varName, { locations: [], hasFallback: false });
         }
-        envVars.get(varName)!.push(relativePath);
+        const entry = envVars.get(varName)!;
+        entry.locations.push(relativePath);
+        // If ANY usage has a fallback, mark it as having a fallback
+        entry.hasFallback = entry.hasFallback || hasFallback;
       }
     }
 
@@ -49,46 +52,93 @@ export class CodeScanner {
       for (const [varName, entry] of vars.entries()) {
         const relativePath = path.relative(this.rootDir, file);
         if (!envVars.has(varName)) {
-          envVars.set(varName, []);
+          envVars.set(varName, { locations: [], hasFallback: false });
         }
-        envVars.get(varName)!.push(`${relativePath} (serverless config)`);
+        envVars.get(varName)!.locations.push(`${relativePath} (serverless config)`);
       }
     }
 
     return envVars;
   }
 
-  async scanFile(filePath: string): Promise<Set<string>> {
-    const envVars = new Set<string>();
+  async scanFile(filePath: string): Promise<Map<string, boolean>> {
+    const envVars = new Map<string, boolean>();
 
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
 
-      // Pattern 1: process.env.VAR_NAME
-      const processEnvPattern = /process\.env\.([A-Z_][A-Z0-9_]*)/g;
+      // Pattern 1: process.env.VAR_NAME with fallback checks
+      // Matches: process.env.VAR || 'default'
+      //          process.env.VAR ?? 'default'
+      //          process.env.VAR ? x : y
+      const processEnvWithFallbackPattern = /process\.env\.([A-Z_][A-Z0-9_]*)\s*(\|\||&&|\?\?|\?)/g;
       let match;
 
-      while ((match = processEnvPattern.exec(content)) !== null) {
-        envVars.add(match[1]);
+      while ((match = processEnvWithFallbackPattern.exec(content)) !== null) {
+        envVars.set(match[1], true); // Has fallback
       }
 
-      // Pattern 2: process.env['VAR_NAME'] or process.env["VAR_NAME"]
-      const processEnvBracketPattern = /process\.env\[['"]([A-Z_][A-Z0-9_]*)['"\]]/g;
+      // Pattern 2: process.env.VAR in conditional checks
+      // Matches: if (process.env.VAR)
+      //          if (!process.env.VAR)
+      const conditionalPattern = /if\s*\(\s*!?\s*process\.env\.([A-Z_][A-Z0-9_]*)\s*\)/g;
 
-      while ((match = processEnvBracketPattern.exec(content)) !== null) {
-        envVars.add(match[1]);
+      while ((match = conditionalPattern.exec(content)) !== null) {
+        if (!envVars.has(match[1])) {
+          envVars.set(match[1], true); // Has conditional check
+        }
       }
 
-      // Pattern 3: Destructuring - const { VAR_NAME } = process.env
-      const destructuringPattern = /const\s+\{\s*([^}]+)\s*\}\s*=\s*process\.env/g;
+      // Pattern 3: Destructuring with defaults - const { VAR = 'default' } = process.env
+      const destructuringWithDefaultPattern = /const\s+\{\s*([^}]+)\s*\}\s*=\s*process\.env/g;
 
-      while ((match = destructuringPattern.exec(content)) !== null) {
-        const vars = match[1].split(',').map(v => v.trim().split(':')[0].trim());
+      while ((match = destructuringWithDefaultPattern.exec(content)) !== null) {
+        const vars = match[1].split(',').map(v => v.trim());
         vars.forEach(v => {
-          if (/^[A-Z_][A-Z0-9_]*$/.test(v)) {
-            envVars.add(v);
+          const parts = v.split('=');
+          const varName = parts[0].split(':')[0].trim();
+          const hasDefault = parts.length > 1;
+          if (/^[A-Z_][A-Z0-9_]*$/.test(varName)) {
+            if (!envVars.has(varName)) {
+              envVars.set(varName, hasDefault);
+            }
           }
         });
+      }
+
+      // Pattern 4: Optional chaining - process.env?.VAR
+      const optionalChainingPattern = /process\.env\?\.([A-Z_][A-Z0-9_]*)/g;
+
+      while ((match = optionalChainingPattern.exec(content)) !== null) {
+        if (!envVars.has(match[1])) {
+          envVars.set(match[1], true); // Has optional chaining
+        }
+      }
+
+      // Pattern 5: process.env['VAR_NAME'] or process.env["VAR_NAME"] with fallback
+      const processEnvBracketWithFallbackPattern = /process\.env\[['"]([A-Z_][A-Z0-9_]*)['"\]]\s*(\|\||&&|\?\?|\?)/g;
+
+      while ((match = processEnvBracketWithFallbackPattern.exec(content)) !== null) {
+        envVars.set(match[1], true); // Has fallback
+      }
+
+      // Pattern 6: Basic usage without any safety (process.env.VAR)
+      // This should come AFTER all the fallback patterns so we don't override them
+      const basicProcessEnvPattern = /process\.env\.([A-Z_][A-Z0-9_]*)/g;
+
+      while ((match = basicProcessEnvPattern.exec(content)) !== null) {
+        if (!envVars.has(match[1])) {
+          envVars.set(match[1], false); // No fallback detected
+        }
+      }
+
+      // Pattern 7: Basic bracket notation without safety
+      const basicBracketPattern = /process\.env\[['"]([A-Z_][A-Z0-9_]*)['"\]]/g;
+
+      while ((match = basicBracketPattern.exec(content)) !== null) {
+        if (!envVars.has(match[1])) {
+          envVars.set(match[1], false); // No fallback detected
+        }
       }
 
     } catch (error) {
@@ -150,7 +200,7 @@ export class CodeScanner {
       const fileDir = path.dirname(file);
       const relativePath = path.relative(this.rootDir, file);
 
-      for (const varName of vars) {
+      for (const [varName, hasFallback] of vars.entries()) {
         if (!dirMap.has(fileDir)) {
           dirMap.set(fileDir, new Map());
         }

@@ -18,8 +18,22 @@ program
   .description('Scan codebase and compare with .env files')
   .option('--ci', 'Exit with error code if issues found (for CI/CD)')
   .option('--strict', 'Report all variables including known runtime variables (AWS_REGION, NODE_ENV, etc.)')
-  .action(async (options) => {
+  .option('--no-detect-fallbacks', 'Treat all missing variables as errors, ignoring fallback detection')
+  .action(async (cmd, command) => {
     try {
+      // Build options object, only including detectFallbacks if the flag was used
+      const options: any = {
+        ci: cmd.ci,
+        strict: cmd.strict
+      };
+
+      // Check if the --no-detect-fallbacks flag was explicitly provided
+      // Commander adds it to the command's options when the flag is used
+      const flagProvided = command.parent?.rawArgs.some((arg: string) => arg.includes('detect-fallback'));
+      if (flagProvided) {
+        options.detectFallbacks = cmd.detectFallbacks;
+      }
+
       await scanCommand(options);
     } catch (error) {
       Logger.error(`${error}`);
@@ -43,9 +57,21 @@ program
   .command('check')
   .description('Check for issues (alias for scan --ci)')
   .option('--strict', 'Report all variables including known runtime variables (AWS_REGION, NODE_ENV, etc.)')
-  .action(async (options) => {
+  .option('--no-detect-fallbacks', 'Treat all missing variables as errors, ignoring fallback detection')
+  .action(async (cmd, command) => {
     try {
-      await scanCommand({ ci: true, strict: options.strict });
+      const options: any = {
+        ci: true,
+        strict: cmd.strict
+      };
+
+      // Check if the --no-detect-fallbacks flag was explicitly provided
+      const flagProvided = command.parent?.rawArgs.some((arg: string) => arg.includes('detect-fallback'));
+      if (flagProvided) {
+        options.detectFallbacks = cmd.detectFallbacks;
+      }
+
+      await scanCommand(options);
     } catch (error) {
       Logger.error(`${error}`);
       process.exit(1);

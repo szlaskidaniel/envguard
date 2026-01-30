@@ -53,15 +53,15 @@ export async function fixCommand() {
 
     // Filter out ignored variables based on config (they shouldn't be in .env.example)
     const { isKnownRuntimeVar } = require('../constants/knownEnvVars');
-    const usedVars = new Map<string, string[]>();
+    const usedVars = new Map<string, { locations: string[], hasFallback: boolean }>();
 
-    for (const [varName, locations] of allUsedVars.entries()) {
+    for (const [varName, usage] of allUsedVars.entries()) {
       const isCustomIgnored = ConfigLoader.shouldIgnoreVar(varName, config);
       const isRuntimeVar = isKnownRuntimeVar(varName);
 
       // Skip known runtime variables and custom ignore vars
       if (!isRuntimeVar && !isCustomIgnored) {
-        usedVars.set(varName, locations);
+        usedVars.set(varName, usage);
       }
     }
 
@@ -109,8 +109,8 @@ async function scanDirectoryForVars(
   targetDir: string,
   scanner: CodeScanner,
   excludePatterns: string[] = []
-): Promise<Map<string, string[]>> {
-  const envVars = new Map<string, string[]>();
+): Promise<Map<string, { locations: string[], hasFallback: boolean }>> {
+  const envVars = new Map<string, { locations: string[], hasFallback: boolean }>();
   const { glob } = require('glob');
 
   // Find all code files in this directory and subdirectories
@@ -128,12 +128,14 @@ async function scanDirectoryForVars(
 
   for (const file of files) {
     const vars = await (scanner as any).scanFile(file);
-    for (const varName of vars) {
+    for (const [varName, hasFallback] of vars.entries()) {
       const relativePath = path.relative(rootDir, file);
       if (!envVars.has(varName)) {
-        envVars.set(varName, []);
+        envVars.set(varName, { locations: [], hasFallback: false });
       }
-      envVars.get(varName)!.push(relativePath);
+      const entry = envVars.get(varName)!;
+      entry.locations.push(relativePath);
+      entry.hasFallback = entry.hasFallback || hasFallback;
     }
   }
 
