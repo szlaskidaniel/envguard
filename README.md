@@ -1,6 +1,8 @@
-# EnvGuard
+# EnvGuard CLI
+**Static Analysis for Environment Variables**
 
 Keep your environment variables in sync with your codebase.
+
 
 ## The Problem
 
