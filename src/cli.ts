@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { scanCommand } from './commands/scan';
 import { fixCommand } from './commands/fix';
 import { checkCommand } from './commands/check';
+import { installHookCommand, uninstallHookCommand } from './commands/install-hook';
 import { Logger } from './utils/logger';
 
 const program = new Command();
@@ -72,6 +73,38 @@ program
       }
 
       await scanCommand(options);
+    } catch (error) {
+      Logger.error(`${error}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('install-hook')
+  .description('Install a Git hook to run envguard automatically')
+  .option('--type <type>', 'Hook type: pre-commit or pre-push (default: pre-commit)')
+  .option('--force', 'Overwrite existing hook if present')
+  .action(async (cmd) => {
+    try {
+      await installHookCommand({
+        type: cmd.type,
+        force: cmd.force
+      });
+    } catch (error) {
+      Logger.error(`${error}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('uninstall-hook')
+  .description('Remove the envguard Git hook')
+  .option('--type <type>', 'Hook type: pre-commit or pre-push (default: pre-commit)')
+  .action(async (cmd) => {
+    try {
+      await uninstallHookCommand({
+        type: cmd.type
+      });
     } catch (error) {
       Logger.error(`${error}`);
       process.exit(1);

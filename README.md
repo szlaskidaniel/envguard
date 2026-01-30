@@ -44,6 +44,43 @@ npx @danielszlaski/envguard scan
 
 > **Note:** The examples below use `envguard` (short form), which works after installation. If using npx without installation, use `npx @danielszlaski/envguard` instead.
 
+### Git Hook Integration (Pre-commit/Pre-push)
+
+Automatically run envguard before every commit or push to catch environment variable issues early:
+
+```bash
+# Install a pre-commit hook (runs before each commit)
+envguard install-hook
+
+# Or install a pre-push hook (runs before each push)
+envguard install-hook --type pre-push
+
+# Force overwrite existing hook
+envguard install-hook --force
+```
+
+Once installed, the hook will automatically run `envguard check` before each commit (or push). If issues are found, the commit/push will be blocked until you fix them.
+
+**Bypass the hook** when needed:
+```bash
+git commit --no-verify
+git push --no-verify
+```
+
+**Remove the hook:**
+```bash
+envguard uninstall-hook
+
+# Or for pre-push hook
+envguard uninstall-hook --type pre-push
+```
+
+**How it works:**
+- The hook creates a script in `.git/hooks/pre-commit` (or `pre-push`)
+- Before each commit/push, it runs `envguard check`
+- If issues are found, the operation is blocked
+- Team members need to install the hook individually (it's not tracked in git)
+
 ### Scan for issues
 
 ```bash
@@ -514,6 +551,11 @@ Checking src/lambda/serverless.yml
 - `envguard check` - Alias for `scan --ci`
 - `envguard check --strict` - Check with strict mode enabled
 - `envguard check --no-detect-fallbacks` - Check without fallback detection
+- `envguard install-hook` - Install a Git pre-commit hook to run checks automatically
+- `envguard install-hook --type pre-push` - Install a pre-push hook instead
+- `envguard install-hook --force` - Overwrite existing hook if present
+- `envguard uninstall-hook` - Remove the envguard Git hook
+- `envguard uninstall-hook --type pre-push` - Remove the pre-push hook
 
 ### Strict Mode
 
