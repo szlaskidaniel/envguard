@@ -1,4 +1,4 @@
-# EnvGuard 🔐
+# EnvGuard
 
 Keep your environment variables in sync with your codebase.
 
@@ -42,31 +42,32 @@ envguard scan
 Example output:
 
 ```
-🔍 Scanning codebase for environment variables...
+✔ Found 1 .env file(s) and 0 serverless.yml file(s)
 
-✓ Found 12 unique environment variables in code
-✓ Found 10 variables in .env
-✓ Found 8 variables in .env.example
+Checking ./
 
-⚠️  Found 5 issue(s):
+   Found 12 variable(s) used in this scope
+   Found 10 variable(s) in .env
+   Found 8 variable(s) in .env.example
 
-🚨 Missing from .env:
-  1. STRIPE_SECRET_KEY
-     Used in: src/payment.js, src/checkout.ts
-  2. API_KEY
-     Used in: src/api/client.ts
+   ✖ Missing from .env:
+      • STRIPE_SECRET_KEY
+   Used in: src/payment.js, src/checkout.ts
+      • API_KEY
+   Used in: src/api/client.ts
 
-⚠️  Unused variables (consider removing):
-  1. OLD_API_URL
-     Defined in .env but never used in code
+   ⚠ Unused variables:
+      • OLD_API_URL
 
-📝 Missing from .env.example:
-  1. DATABASE_URL
-     Used in: src/db/connection.ts
-  2. JWT_SECRET
-     Used in: src/auth/jwt.ts
+   Missing from .env.example:
+      • DATABASE_URL
+      • JWT_SECRET
 
-💡 Run `envguard fix` to auto-generate .env.example
+──────────────────────────────────────────────────
+
+⚠ Total: 5 issue(s) across 1 location(s)
+
+Run `envguard fix` to auto-generate .env.example
 ```
 
 ### Auto-generate .env.example
@@ -248,17 +249,17 @@ provider:
 ### Scan output for serverless.yml
 
 ```
-📂 Checking src/lambda/serverless.yml
+Checking src/lambda/serverless.yml
 
    Found 3 variable(s) in serverless.yml
    Found 2 variable(s) used in code
 
-   ⚠️  Unused variables in serverless.yml:
-      1. DATABASE_URL
+   ⚠ Unused variables in serverless.yml:
+      • DATABASE_URL
 
-   🚨 Missing from serverless.yml:
-      1. LOG_LEVEL
-         Used in: src/lambda/handler.js
+   ✖ Missing from serverless.yml:
+      • LOG_LEVEL
+   Used in: src/lambda/handler.js
 ```
 
 ### Key Features
@@ -296,7 +297,7 @@ envguard scan --strict
 
 Example output (non-strict):
 ```
-ℹ️  Skipped known runtime variables (use --strict to show):
+   Skipped known runtime variables (use --strict to show):
    Serverless Framework: IS_OFFLINE, SLS_OFFLINE
    CI/CD: CI
    AWS Lambda: AWS_REGION
