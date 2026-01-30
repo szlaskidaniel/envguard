@@ -1,6 +1,5 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import chalk from 'chalk';
 import { glob } from 'glob';
 import { CodeScanner } from '../scanner/codeScanner';
 import { EnvParser, EnvEntry } from '../parser/envParser';
@@ -9,6 +8,7 @@ import { EnvAnalyzer } from '../analyzer/envAnalyzer';
 import { Issue } from '../types';
 import { isKnownRuntimeVar, getRuntimeVarCategory } from '../constants/knownEnvVars';
 import { ConfigLoader } from '../config/configLoader';
+import { Logger } from '../utils/logger';
 
 export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
   const rootDir = process.cwd();
@@ -19,19 +19,23 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
   // CLI options override config file
   const strictMode = options.strict !== undefined ? options.strict : config.strict;
 
-  console.log(chalk.blue('🔍 Scanning codebase for environment variables...\n'));
+  Logger.startSpinner('Scanning codebase for environment variables...');
 
   // Step 1: Find all .env files and serverless.yml files
   const scanner = new CodeScanner(rootDir);
   const envFiles = await scanner.findEnvFiles();
   const serverlessFiles = await scanner.findServerlessFiles();
 
+  Logger.stopSpinner();
+
   if (envFiles.length === 0 && serverlessFiles.length === 0) {
-    console.log(chalk.yellow('⚠️  No .env or serverless.yml files found in the project\n'));
+    Logger.warning('No .env or serverless.yml files found in the project');
+    Logger.blank();
     return { success: false, issues: [] };
   }
 
-  console.log(chalk.green(`✓ Found ${envFiles.length} .env file(s) and ${serverlessFiles.length} serverless.yml file(s)\n`));
+  Logger.success(`Found ${envFiles.length} .env file(s) and ${serverlessFiles.length} serverless.yml file(s)`);
+  Logger.blank();
 
   const parser = new EnvParser();
   const serverlessParser = new ServerlessParser();
@@ -43,15 +47,17 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
     const serverlessDir = path.dirname(serverlessFilePath);
     const relativePath = path.relative(rootDir, serverlessFilePath);
 
-    console.log(chalk.cyan(`📂 Checking ${relativePath}\n`));
+    Logger.path(`Checking ${relativePath}`);
+    Logger.blank();
 
     // Parse serverless.yml
     const serverlessVars = serverlessParser.parse(serverlessFilePath);
-    console.log(chalk.gray(`   Found ${serverlessVars.size} variable(s) in serverless.yml`));
+    Logger.info(`Found ${serverlessVars.size} variable(s) in serverless.yml`, true);
 
     // Scan code files in this directory to see what's actually used
     const usedVars = await scanDirectoryForCodeVars(rootDir, serverlessDir, scanner);
-    console.log(chalk.gray(`   Found ${usedVars.size} variable(s) used in code\n`));
+    Logger.info(`Found ${usedVars.size} variable(s) used in code`, true);
+    Logger.blank();
 
     // Check for unused variables in serverless.yml
     const unusedServerlessVars: string[] = [];
@@ -87,24 +93,24 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
     }
 
     if (unusedServerlessVars.length > 0) {
-      console.log(chalk.yellow.bold('   ⚠️  Unused variables in serverless.yml:'));
-      unusedServerlessVars.forEach((varName, index) => {
-        console.log(chalk.yellow(`      ${index + 1}. ${varName}`));
+      Logger.warning('Unused variables in serverless.yml:', true);
+      unusedServerlessVars.forEach((varName) => {
+        Logger.warningItem(varName, 2);
         allIssues.push({
           type: 'unused',
           varName,
           details: `Defined in serverless.yml but never used in code`,
         });
       });
-      console.log();
+      Logger.blank();
     }
 
     if (missingFromServerless.length > 0) {
-      console.log(chalk.red.bold('   🚨 Missing from serverless.yml:'));
-      missingFromServerless.forEach((item, index) => {
-        console.log(chalk.red(`      ${index + 1}. ${item.varName}`));
+      Logger.error('Missing from serverless.yml:', true);
+      missingFromServerless.forEach((item) => {
+        Logger.errorItem(item.varName, 2);
         if (item.locations && item.locations.length > 0) {
-          console.log(chalk.gray(`         Used in: ${item.locations.slice(0, 2).join(', ')}`));
+          Logger.info(`Used in: ${item.locations.slice(0, 2).join(', ')}`, true);
         }
         allIssues.push({
           type: 'missing',
@@ -113,16 +119,17 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
           locations: item.locations,
         });
       });
-      console.log();
+      Logger.blank();
     }
 
     if (unusedServerlessVars.length === 0 && missingFromServerless.length === 0) {
-      console.log(chalk.green('   ✅ No issues in this serverless.yml\n'));
+      Logger.success('No issues in this serverless.yml', true);
+      Logger.blank();
     }
 
     // Show skipped runtime variables in non-strict mode
     if (!strictMode && skippedRuntimeVars.length > 0) {
-      console.log(chalk.gray('   ℹ️  Skipped known runtime variables (use --strict to show):'));
+      Logger.info('Skipped known runtime variables (use --strict to show):', true);
       // Group by category
       const grouped = new Map<string, string[]>();
       for (const { varName, category } of skippedRuntimeVars) {
@@ -132,9 +139,9 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
         grouped.get(category)!.push(varName);
       }
       for (const [category, vars] of grouped.entries()) {
-        console.log(chalk.gray(`      ${category}: ${vars.join(', ')}`));
+        Logger.info(`${category}: ${vars.join(', ')}`, true);
       }
-      console.log();
+      Logger.blank();
     }
   }
 
@@ -144,21 +151,23 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
     const relativePath = path.relative(rootDir, envDir);
     const displayPath = relativePath || '.';
 
-    console.log(chalk.cyan(`📂 Checking ${displayPath}/\n`));
+    Logger.path(`Checking ${displayPath}/`);
+    Logger.blank();
 
     // Step 3: Scan code files in this directory and subdirectories
     const usedVars = await scanDirectoryForVars(rootDir, envDir, scanner);
 
-    console.log(chalk.gray(`   Found ${usedVars.size} variable(s) used in this scope`));
+    Logger.info(`Found ${usedVars.size} variable(s) used in this scope`, true);
 
     // Step 4: Parse .env file
     const definedVars = parser.parse(envFilePath);
-    console.log(chalk.gray(`   Found ${definedVars.size} variable(s) in .env`));
+    Logger.info(`Found ${definedVars.size} variable(s) in .env`, true);
 
     // Step 5: Parse .env.example
     const examplePath = path.join(envDir, '.env.example');
     const exampleVars = parser.parseExample(examplePath);
-    console.log(chalk.gray(`   Found ${exampleVars.size} variable(s) in .env.example\n`));
+    Logger.info(`Found ${exampleVars.size} variable(s) in .env.example`, true);
+    Logger.blank();
 
     // Step 6: Analyze and find issues
     const result = analyzer.analyze(usedVars, definedVars, exampleVars);
@@ -170,55 +179,60 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean }) {
       const undocumentedIssues = result.issues.filter(i => i.type === 'undocumented');
 
       if (missingIssues.length > 0) {
-        console.log(chalk.red.bold('   🚨 Missing from .env:'));
-        missingIssues.forEach((issue, index) => {
-          console.log(chalk.red(`      ${index + 1}. ${issue.varName}`));
+        Logger.error('Missing from .env:', true);
+        missingIssues.forEach((issue) => {
+          Logger.errorItem(issue.varName, 2);
           if (issue.locations && issue.locations.length > 0) {
-            console.log(chalk.gray(`         Used in: ${issue.locations.slice(0, 2).join(', ')}`));
+            Logger.info(`Used in: ${issue.locations.slice(0, 2).join(', ')}`, true);
           }
         });
-        console.log();
+        Logger.blank();
       }
 
       if (unusedIssues.length > 0) {
-        console.log(chalk.yellow.bold('   ⚠️  Unused variables:'));
-        unusedIssues.forEach((issue, index) => {
-          console.log(chalk.yellow(`      ${index + 1}. ${issue.varName}`));
+        Logger.warning('Unused variables:', true);
+        unusedIssues.forEach((issue) => {
+          Logger.warningItem(issue.varName, 2);
         });
-        console.log();
+        Logger.blank();
       }
 
       if (undocumentedIssues.length > 0) {
-        console.log(chalk.blue.bold('   📝 Missing from .env.example:'));
-        undocumentedIssues.forEach((issue, index) => {
-          console.log(chalk.blue(`      ${index + 1}. ${issue.varName}`));
+        Logger.info('Missing from .env.example:', true);
+        undocumentedIssues.forEach((issue) => {
+          Logger.infoItem(issue.varName, 2);
         });
-        console.log();
+        Logger.blank();
       }
 
       allIssues.push(...result.issues);
     } else {
-      console.log(chalk.green('   ✅ No issues in this directory\n'));
+      Logger.success('No issues in this directory', true);
+      Logger.blank();
     }
   }
 
   // Display summary
-  console.log(chalk.bold('─'.repeat(50)));
+  Logger.divider();
   if (allIssues.length === 0) {
-    console.log(chalk.green('\n✅ No issues found! All environment variables are in sync.\n'));
+    Logger.summary('No issues found! All environment variables are in sync.');
     return { success: true, issues: [] };
   }
 
-  console.log(chalk.yellow(`\n⚠️  Total: ${allIssues.length} issue(s) across ${envFiles.length} location(s)\n`));
+  Logger.blank();
+  Logger.warning(`Total: ${allIssues.length} issue(s) across ${envFiles.length} location(s)`);
+  Logger.blank();
 
   // Suggest fix
   if (!options.ci) {
-    console.log(chalk.cyan('💡 Run `envguard fix` to auto-generate .env.example files\n'));
+    Logger.info('Run `envguard fix` to auto-generate .env.example files');
+    Logger.blank();
   }
 
   // Exit with error code in CI mode
   if (options.ci) {
-    console.log(chalk.red('❌ Issues found. Exiting with error code 1.\n'));
+    Logger.error('Issues found. Exiting with error code 1.');
+    Logger.blank();
     process.exit(1);
   }
 

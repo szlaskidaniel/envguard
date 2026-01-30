@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { scanCommand } from './commands/scan';
 import { fixCommand } from './commands/fix';
 import { checkCommand } from './commands/check';
+import { Logger } from './utils/logger';
 
 const program = new Command();
 
@@ -21,7 +22,7 @@ program
     try {
       await scanCommand(options);
     } catch (error) {
-      console.error('Error:', error);
+      Logger.error(`${error}`);
       process.exit(1);
     }
   });
@@ -33,7 +34,7 @@ program
     try {
       await fixCommand();
     } catch (error) {
-      console.error('Error:', error);
+      Logger.error(`${error}`);
       process.exit(1);
     }
   });
@@ -46,7 +47,7 @@ program
     try {
       await scanCommand({ ci: true, strict: options.strict });
     } catch (error) {
-      console.error('Error:', error);
+      Logger.error(`${error}`);
       process.exit(1);
     }
   });

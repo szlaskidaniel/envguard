@@ -1,25 +1,29 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import chalk from 'chalk';
 import { CodeScanner } from '../scanner/codeScanner';
 import { EnvParser } from '../parser/envParser';
 import { EnvAnalyzer } from '../analyzer/envAnalyzer';
+import { Logger } from '../utils/logger';
 
 export async function fixCommand() {
   const rootDir = process.cwd();
 
-  console.log(chalk.blue('🔧 Generating .env.example files...\n'));
+  Logger.startSpinner('Generating .env.example files...');
 
   // Step 1: Find all .env files
   const scanner = new CodeScanner(rootDir);
   const envFiles = await scanner.findEnvFiles();
 
+  Logger.stopSpinner();
+
   if (envFiles.length === 0) {
-    console.log(chalk.yellow('⚠️  No .env files found in the project\n'));
+    Logger.warning('No .env files found in the project');
+    Logger.blank();
     return { success: false };
   }
 
-  console.log(chalk.green(`✓ Found ${envFiles.length} .env file(s)\n`));
+  Logger.success(`Found ${envFiles.length} .env file(s)`);
+  Logger.blank();
 
   const parser = new EnvParser();
   const analyzer = new EnvAnalyzer();
@@ -31,17 +35,19 @@ export async function fixCommand() {
     const relativePath = path.relative(rootDir, envDir);
     const displayPath = relativePath || '.';
 
-    console.log(chalk.cyan(`📂 Processing ${displayPath}/`));
+    Logger.path(`Processing ${displayPath}/`);
 
     // Step 3: Scan code files in this directory and subdirectories
     const usedVars = await scanDirectoryForVars(rootDir, envDir, scanner);
 
     if (usedVars.size === 0) {
-      console.log(chalk.gray(`   No environment variables found in code\n`));
+      Logger.info('No environment variables found in code', true);
+      Logger.blank();
       continue;
     }
 
-    console.log(chalk.green(`   ✓ Found ${usedVars.size} variable(s) used in this directory\n`));
+    Logger.success(`Found ${usedVars.size} variable(s) used in this directory`, true);
+    Logger.blank();
 
     // Step 4: Parse existing .env.example to preserve comments
     const examplePath = path.join(envDir, '.env.example');
@@ -53,7 +59,8 @@ export async function fixCommand() {
     // Step 6: Write to .env.example
     fs.writeFileSync(examplePath, newContent, 'utf-8');
 
-    console.log(chalk.green(`   ✅ Generated ${path.relative(rootDir, examplePath)}\n`));
+    Logger.success(`Generated ${path.relative(rootDir, examplePath)}`, true);
+    Logger.blank();
 
     totalVars += usedVars.size;
 
@@ -62,11 +69,12 @@ export async function fixCommand() {
     const missingFromEnv = Array.from(usedVars.keys()).filter(v => !definedVars.has(v));
 
     if (missingFromEnv.length > 0) {
-      console.log(chalk.yellow(`   ⚠️  Missing from .env: ${missingFromEnv.join(', ')}\n`));
+      Logger.warning(`Missing from .env: ${missingFromEnv.join(', ')}`, true);
+      Logger.blank();
     }
   }
 
-  console.log(chalk.green(`🎉 Done! Generated ${envFiles.length} .env.example file(s) with ${totalVars} total variables\n`));
+  Logger.summary(`Generated ${envFiles.length} .env.example file(s) with ${totalVars} total variables`);
 
   return { success: true };
 }
