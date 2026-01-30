@@ -21,7 +21,12 @@
     "env",
     "dotenv",
     "config",
-    "security"
+    "security",
+    "serverless",
+    "ci",
+    "env-check",
+    "serverless-env",
+    "lint"
   ],
   "author": "Daniel Szlaski",
   "license": "MIT",
