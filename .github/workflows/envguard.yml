@@ -19,6 +19,6 @@ jobs:
         with:
           node-version: '20.x'
       - name: Install
-        run: npm -i @danielszlaski/envguard      
+        run: npm install @danielszlaski/envguard@latest -g
       - name: Run EnvGuard check
         run: envguard check
