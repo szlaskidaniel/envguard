@@ -113,19 +113,183 @@ envguard check
 
 This is equivalent to `envguard scan --ci` and will exit with code 1 if issues are found.
 
-#### GitHub Actions Example
+## GitHub Actions Setup
+
+EnvGuard integrates seamlessly with GitHub Actions to validate your environment variables on every pull request or push.
+
+### Quick Setup (Recommended)
+
+Create `.github/workflows/envguard.yml` in your repository:
 
 ```yaml
-name: Check Env Sync
-on: [pull_request]
+name: Environment Variables Check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, develop]
 
 jobs:
   envguard:
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      
+      - name: Run EnvGuard check
+        run: npx envguard check
+```
+
+**That's it!** No installation needed - `npx` downloads EnvGuard on demand.
+
+### Advanced Setup - With PR Comments
+
+Get automatic comments on pull requests when issues are found:
+
+```yaml
+name: Environment Variables Check
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  envguard:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      
+      - name: Run EnvGuard scan
+        id: envguard
+        continue-on-error: true
+        run: |
+          OUTPUT=$(npx envguard scan 2>&1)
+          echo "$OUTPUT"
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          npx envguard check
+      
+      - name: Comment on PR if failed
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '## ⚠️ EnvGuard Check Failed\n\n```\n${{ steps.envguard.outputs.output }}\n```\n\nPlease run `npx envguard fix` locally to generate `.env.example` files, then commit the changes.'
+            })
+```
+
+### Strict Mode in CI
+
+Enable strict mode to catch all variables including runtime-provided ones:
+
+```yaml
+- name: Run EnvGuard check (strict)
+  run: npx envguard check --strict
+```
+
+### Weekly Audit
+
+Schedule weekly checks to catch configuration drift:
+
+```yaml
+name: Weekly Environment Audit
+
+on:
+  schedule:
+    - cron: '0 9 * * MON' # Every Monday at 9am UTC
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      - run: npx envguard scan --strict
+      
+      - name: Create issue if problems found
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '⚠️ Environment Variables Out of Sync',
+              body: 'Weekly EnvGuard audit found issues. Run `npx envguard scan` locally for details.',
+              labels: ['env-config', 'maintenance']
+            })
+```
+
+### Caching for Faster Runs
+
+Speed up CI runs by caching npx downloads:
+
+```yaml
+- name: Setup Node.js
+  uses: actions/setup-node@v4
+  with:
+    node-version: '20.x'
+    cache: 'npm'  # Caches npx downloads
+
+- name: Run EnvGuard
+  run: npx envguard check
+```
+
+### Other CI Platforms
+
+**GitLab CI** (`.gitlab-ci.yml`):
+```yaml
+envguard:
+  image: node:20
+  script:
+    - npx envguard check
+  only:
+    - merge_requests
+```
+
+**CircleCI** (`.circleci/config.yml`):
+```yaml
+version: 2.1
+jobs:
+  envguard:
+    docker:
+      - image: cimg/node:20.0
+    steps:
+      - checkout
       - run: npx envguard check
+```
+
+**Travis CI** (`.travis.yml`):
+```yaml
+language: node_js
+node_js:
+  - '20'
+script:
+  - npx envguard check
 ```
 
 ## Supported Languages & Frameworks
