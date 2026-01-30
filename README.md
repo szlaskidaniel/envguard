@@ -23,17 +23,26 @@ EnvGuard automatically:
 
 ## Installation
 
+**Option 1: Install globally**
+
 ```bash
-npm install -g envguard
+npm install -g @danielszlaski/envguard
 ```
 
-Or use with npx:
+After installation, use the short command:
+```bash
+envguard scan
+```
+
+**Option 2: Use with npx (no installation needed)**
 
 ```bash
-npx envguard scan
+npx @danielszlaski/envguard scan
 ```
 
 ## Usage
+
+> **Note:** The examples below use `envguard` (short form), which works after installation. If using npx without installation, use `npx @danielszlaski/envguard` instead.
 
 ### Scan for issues
 
@@ -144,7 +153,7 @@ jobs:
           node-version: '20.x'
       
       - name: Run EnvGuard check
-        run: npx envguard check
+        run: npx @danielszlaski/envguard scan --ci
 ```
 
 **That's it!** No installation needed - `npx` downloads EnvGuard on demand.
@@ -179,12 +188,12 @@ jobs:
         id: envguard
         continue-on-error: true
         run: |
-          OUTPUT=$(npx envguard scan 2>&1)
+          OUTPUT=$(npx @danielszlaski/envguard scan 2>&1)
           echo "$OUTPUT"
           echo "output<<EOF" >> $GITHUB_OUTPUT
           echo "$OUTPUT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          npx envguard check
+          npx @danielszlaski/envguard scan --ci
       
       - name: Comment on PR if failed
         if: failure()
@@ -195,7 +204,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '## ⚠️ EnvGuard Check Failed\n\n```\n${{ steps.envguard.outputs.output }}\n```\n\nPlease run `npx envguard fix` locally to generate `.env.example` files, then commit the changes.'
+              body: '## ⚠️ EnvGuard Check Failed\n\n```\n${{ steps.envguard.outputs.output }}\n```\n\nPlease run `npx @danielszlaski/envguard fix` locally to generate `.env.example` files, then commit the changes.'
             })
 ```
 
@@ -205,7 +214,7 @@ Enable strict mode to catch all variables including runtime-provided ones:
 
 ```yaml
 - name: Run EnvGuard check (strict)
-  run: npx envguard check --strict
+  run: npx @danielszlaski/envguard scan --ci --strict
 ```
 
 ### Weekly Audit
@@ -228,7 +237,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20.x'
-      - run: npx envguard scan --strict
+      - run: npx @danielszlaski/envguard scan --ci --strict
       
       - name: Create issue if problems found
         if: failure()
@@ -239,7 +248,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: '⚠️ Environment Variables Out of Sync',
-              body: 'Weekly EnvGuard audit found issues. Run `npx envguard scan` locally for details.',
+              body: 'Weekly EnvGuard audit found issues. Run `npx @danielszlaski/envguard scan` locally for details.',
               labels: ['env-config', 'maintenance']
             })
 ```
@@ -256,7 +265,7 @@ Speed up CI runs by caching npx downloads:
     cache: 'npm'  # Caches npx downloads
 
 - name: Run EnvGuard
-  run: npx envguard check
+  run: npx @danielszlaski/envguard scan --ci
 ```
 
 ### Other CI Platforms
@@ -266,7 +275,7 @@ Speed up CI runs by caching npx downloads:
 envguard:
   image: node:20
   script:
-    - npx envguard check
+    - npx @danielszlaski/envguard scan --ci
   only:
     - merge_requests
 ```
@@ -280,7 +289,7 @@ jobs:
       - image: cimg/node:20.0
     steps:
       - checkout
-      - run: npx envguard check
+      - run: npx @danielszlaski/envguard scan --ci
 ```
 
 **Travis CI** (`.travis.yml`):
@@ -289,7 +298,7 @@ language: node_js
 node_js:
   - '20'
 script:
-  - npx envguard check
+  - npx @danielszlaski/envguard scan --ci
 ```
 
 ## Supported Languages & Frameworks
