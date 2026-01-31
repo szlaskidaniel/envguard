@@ -10,7 +10,7 @@ import { isKnownRuntimeVar, getRuntimeVarCategory } from '../constants/knownEnvV
 import { ConfigLoader } from '../config/configLoader';
 import { Logger } from '../utils/logger';
 
-export async function scanCommand(options: { ci?: boolean; strict?: boolean; detectFallbacks?: boolean }) {
+export async function scanCommand(options: { ci?: boolean; strict?: boolean; detectFallbacks?: boolean; commandName?: string }) {
   const rootDir = process.cwd();
 
   // Load configuration
@@ -334,7 +334,8 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean; det
 
   // Suggest fix
   if (!options.ci) {
-    Logger.info('Run `envguard fix` to auto-generate .env.example files');
+    const cmdName = options.commandName || 'envguard';
+    Logger.info(`Run \`${cmdName} fix\` to auto-generate .env.example files`);
     Logger.blank();
   }
 
