@@ -1,12 +1,10 @@
 import * as path from 'path';
-import * as fs from 'fs';
 import { glob } from 'glob';
 import chalk from 'chalk';
 import { CodeScanner } from '../scanner/codeScanner';
 import { EnvParser, EnvEntry } from '../parser/envParser';
 import { ServerlessParser } from '../parser/serverlessParser';
 import { EnvAnalyzer } from '../analyzer/envAnalyzer';
-import { Issue } from '../types';
 import { isKnownRuntimeVar, getRuntimeVarCategory } from '../constants/knownEnvVars';
 import { ConfigLoader } from '../config/configLoader';
 import { Logger } from '../utils/logger';
@@ -63,256 +61,134 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean; det
   const parser = new EnvParser();
   const serverlessParser = new ServerlessParser();
   const analyzer = new EnvAnalyzer();
-  const allIssues: Issue[] = [];
 
-  // Step 2a: Process serverless.yml files independently
+  // UNIFIED APPROACH: Collect all defined variables from ALL sources first
+  const allDefinedVars = new Map<string, { key: string; value: string; lineNumber: number; source: string }>();
+  const allExampleVars = new Set<string>();
+
+  // Collect from .env files
+  for (const envFilePath of envFiles) {
+    const definedVars = parser.parse(envFilePath);
+    const relativePath = path.relative(rootDir, envFilePath);
+    for (const [key, entry] of definedVars.entries()) {
+      if (!allDefinedVars.has(key)) {
+        allDefinedVars.set(key, { ...entry, source: relativePath });
+      }
+    }
+
+    // Also collect from .env.example files
+    const envDir = path.dirname(envFilePath);
+    const examplePath = path.join(envDir, '.env.example');
+    const exampleVars = parser.parseExample(examplePath);
+    exampleVars.forEach(varName => allExampleVars.add(varName));
+  }
+
+  // Collect from serverless.yml files
   for (const serverlessFilePath of serverlessFiles) {
-    const serverlessDir = path.dirname(serverlessFilePath);
-    const relativePath = path.relative(rootDir, serverlessFilePath);
-
-    Logger.path(`Checking ${relativePath}`);
-    Logger.blank();
-
-    // Parse serverless.yml
     const serverlessVars = serverlessParser.parse(serverlessFilePath);
-    Logger.info(`Found ${serverlessVars.size} variable(s) in serverless.yml`, true);
-
-    // Scan code files in this directory to see what's actually used
-    const usedVars = await scanDirectoryForCodeVars(rootDir, serverlessDir, scanner, config.exclude);
-    Logger.info(`Found ${usedVars.size} variable(s) used in code`, true);
-    Logger.blank();
-
-    // Check for unused variables in serverless.yml
-    const unusedServerlessVars: string[] = [];
-    for (const [varName] of serverlessVars.entries()) {
-      if (!usedVars.has(varName)) {
-        // In non-strict mode, skip known runtime variables and custom ignore vars from "unused" warnings
-        const isIgnored = isKnownRuntimeVar(varName) || ConfigLoader.shouldIgnoreVar(varName, config);
-        if (strictMode || !isIgnored) {
-          unusedServerlessVars.push(varName);
-        }
+    const relativePath = path.relative(rootDir, serverlessFilePath);
+    for (const [key, entry] of serverlessVars.entries()) {
+      if (!allDefinedVars.has(key)) {
+        allDefinedVars.set(key, { key, value: entry.valueExpression || '', lineNumber: entry.lineNumber || 0, source: relativePath });
       }
-    }
-
-    // Check for variables used in code but not defined in serverless.yml
-    const missingFromServerless: Array<{ varName: string; locations: string[]; hasFallback: boolean; category?: string }> = [];
-    const skippedRuntimeVars: Array<{ varName: string; category: string }> = [];
-
-    for (const [varName, usage] of usedVars.entries()) {
-      if (!serverlessVars.has(varName)) {
-        // In non-strict mode, skip known runtime variables and custom ignore vars
-        const isCustomIgnored = ConfigLoader.shouldIgnoreVar(varName, config);
-        const isRuntimeVar = isKnownRuntimeVar(varName);
-
-        if (!strictMode && (isRuntimeVar || isCustomIgnored)) {
-          const category = isCustomIgnored ? 'Custom (from config)' : getRuntimeVarCategory(varName);
-          if (category) {
-            skippedRuntimeVars.push({ varName, category });
-          }
-        } else {
-          missingFromServerless.push({ varName, locations: usage.locations, hasFallback: usage.hasFallback });
-        }
-      }
-    }
-
-    if (unusedServerlessVars.length > 0) {
-      Logger.info('Unused variables in serverless.yml:', true);
-      unusedServerlessVars.forEach((varName) => {
-        Logger.infoItem(varName, 2);
-        allIssues.push({
-          type: 'unused',
-          severity: 'info',
-          varName,
-          details: `Defined in serverless.yml but never used in code`,
-        });
-      });
-      Logger.blank();
-    }
-
-    if (missingFromServerless.length > 0) {
-      // Group by severity (respect detectFallbacks config)
-      const errors = missingFromServerless.filter(item => !detectFallbacks || !item.hasFallback);
-      const warnings = missingFromServerless.filter(item => detectFallbacks && item.hasFallback);
-
-      if (errors.length > 0) {
-        Logger.error('Missing from serverless.yml:', true);
-        errors.forEach((item) => {
-          Logger.errorItem(item.varName, 2);
-          if (item.locations && item.locations.length > 0) {
-            Logger.info(`Used in: ${item.locations.slice(0, 2).join(', ')}`, true);
-          }
-          const details = (detectFallbacks && item.hasFallback)
-            ? `Used in code with fallback but not defined in serverless.yml`
-            : `Used in code but not defined in serverless.yml`;
-          allIssues.push({
-            type: 'missing',
-            severity: 'error',
-            varName: item.varName,
-            details,
-            locations: item.locations,
-          });
-        });
-        Logger.blank();
-      }
-
-      if (warnings.length > 0) {
-        Logger.warning('Missing from serverless.yml (with fallback):', true);
-        warnings.forEach((item) => {
-          Logger.warningItem(item.varName, 2);
-          if (item.locations && item.locations.length > 0) {
-            Logger.info(`Used in: ${item.locations.slice(0, 2).join(', ')}`, true);
-          }
-          allIssues.push({
-            type: 'missing',
-            severity: 'warning',
-            varName: item.varName,
-            details: `Used in code with fallback but not defined in serverless.yml`,
-            locations: item.locations,
-          });
-        });
-        Logger.blank();
-      }
-    }
-
-    if (unusedServerlessVars.length === 0 && missingFromServerless.length === 0) {
-      Logger.success('No issues in this serverless.yml', true);
-      Logger.blank();
-    }
-
-    // Show skipped runtime variables in non-strict mode
-    if (!strictMode && skippedRuntimeVars.length > 0) {
-      Logger.info('Skipped known runtime variables (use --strict to show):', true);
-      // Group by category
-      const grouped = new Map<string, string[]>();
-      for (const { varName, category } of skippedRuntimeVars) {
-        if (!grouped.has(category)) {
-          grouped.set(category, []);
-        }
-        grouped.get(category)!.push(varName);
-      }
-      for (const [category, vars] of grouped.entries()) {
-        Logger.info(`${category}: ${vars.join(', ')}`, true);
-      }
-      Logger.blank();
     }
   }
 
-  // Step 2b: Process each .env file (including directories that also have serverless.yml)
-  for (const envFilePath of envFiles) {
-    const envDir = path.dirname(envFilePath);
-    const relativePath = path.relative(rootDir, envDir);
-    const displayPath = relativePath || '.';
+  // Scan ALL code for environment variable usage
+  const allUsedVars = await scanAllCodeForVars(rootDir, scanner, config.exclude);
 
-    Logger.path(`Checking ${displayPath}/`);
-    Logger.blank();
+  // Filter out ignored variables based on config
+  const usedVars = new Map<string, { locations: string[], hasFallback: boolean }>();
+  const skippedRuntimeVars: Array<{ varName: string; category: string }> = [];
 
-    // Step 3: Scan code files in this directory and subdirectories
-    const allUsedVars = await scanDirectoryForVars(rootDir, envDir, scanner, config.exclude);
+  for (const [varName, usage] of allUsedVars.entries()) {
+    const isCustomIgnored = ConfigLoader.shouldIgnoreVar(varName, config);
+    const isRuntimeVar = isKnownRuntimeVar(varName);
 
-    // Filter out ignored variables based on config
-    const usedVars = new Map<string, { locations: string[], hasFallback: boolean }>();
-    const skippedVarsInScope: Array<{ varName: string; category: string }> = [];
-
-    for (const [varName, usage] of allUsedVars.entries()) {
-      const isCustomIgnored = ConfigLoader.shouldIgnoreVar(varName, config);
-      const isRuntimeVar = isKnownRuntimeVar(varName);
-
-      // In non-strict mode, skip known runtime variables and custom ignore vars
-      if (strictMode || (!isRuntimeVar && !isCustomIgnored)) {
-        usedVars.set(varName, usage);
-      } else {
-        const category = isCustomIgnored ? 'Custom (from config)' : getRuntimeVarCategory(varName);
-        if (category) {
-          skippedVarsInScope.push({ varName, category });
-        }
-      }
-    }
-
-    Logger.info(`Found ${usedVars.size} variable(s) used in this scope`, true);
-
-    // Step 4: Parse .env file
-    const definedVars = parser.parse(envFilePath);
-    Logger.info(`Found ${definedVars.size} variable(s) in .env`, true);
-
-    // Step 5: Parse .env.example (for documentation checking only, not as a source)
-    const examplePath = path.join(envDir, '.env.example');
-    const exampleVars = parser.parseExample(examplePath);
-    Logger.blank();
-
-    // Step 6: Analyze and find issues
-    const result = analyzer.analyze(usedVars, definedVars, exampleVars, detectFallbacks);
-
-    if (result.issues.length > 0) {
-      // Group issues by type and severity
-      const missingErrors = result.issues.filter(i => i.type === 'missing' && i.severity === 'error');
-      const missingWarnings = result.issues.filter(i => i.type === 'missing' && i.severity === 'warning');
-      const unusedIssues = result.issues.filter(i => i.type === 'unused');
-
-      if (missingErrors.length > 0) {
-        Logger.error('Missing from .env:', true);
-        missingErrors.forEach((issue) => {
-          Logger.errorItem(issue.varName, 2);
-          if (issue.locations && issue.locations.length > 0) {
-            Logger.info(`Used in: ${issue.locations.slice(0, 2).join(', ')}`, true);
-          }
-        });
-        Logger.blank();
-      }
-
-      if (missingWarnings.length > 0) {
-        Logger.warning('Missing from .env (with fallback):', true);
-        missingWarnings.forEach((issue) => {
-          Logger.warningItem(issue.varName, 2);
-          if (issue.locations && issue.locations.length > 0) {
-            Logger.info(`Used in: ${issue.locations.slice(0, 2).join(', ')}`, true);
-          }
-        });
-        Logger.blank();
-      }
-
-      if (unusedIssues.length > 0) {
-        Logger.info('Unused variables:', true);
-        unusedIssues.forEach((issue) => {
-          Logger.infoItem(issue.varName, 2);
-        });
-        Logger.blank();
-      }
-
-      allIssues.push(...result.issues);
+    // In non-strict mode, skip known runtime variables and custom ignore vars
+    if (strictMode || (!isRuntimeVar && !isCustomIgnored)) {
+      usedVars.set(varName, usage);
     } else {
-      Logger.success('No issues in this directory', true);
-      Logger.blank();
+      const category = isCustomIgnored ? 'Custom (from config)' : getRuntimeVarCategory(varName);
+      if (category) {
+        skippedRuntimeVars.push({ varName, category });
+      }
     }
+  }
 
-    // Show skipped variables in non-strict mode
-    if (!strictMode && skippedVarsInScope.length > 0) {
-      Logger.info('Skipped known runtime/ignored variables (use --strict to show):', true);
-      // Group by category
-      const grouped = new Map<string, string[]>();
-      for (const { varName, category } of skippedVarsInScope) {
-        if (!grouped.has(category)) {
-          grouped.set(category, []);
-        }
-        grouped.get(category)!.push(varName);
+  // Convert allDefinedVars to the format expected by analyzer
+  const definedVarsForAnalyzer = new Map<string, EnvEntry>();
+  for (const [key, entry] of allDefinedVars.entries()) {
+    definedVarsForAnalyzer.set(key, { key, value: entry.value, lineNumber: entry.lineNumber });
+  }
+
+  // Analyze and find issues (unified - each variable reported only once)
+  const result = analyzer.analyze(usedVars, definedVarsForAnalyzer, allExampleVars, detectFallbacks);
+
+  // Group issues by type and severity
+  const missingErrors = result.issues.filter(i => i.type === 'missing' && i.severity === 'error');
+  const missingWarnings = result.issues.filter(i => i.type === 'missing' && i.severity === 'warning');
+  const unusedIssues = result.issues.filter(i => i.type === 'unused');
+
+  // Display issues
+  if (missingErrors.length > 0) {
+    Logger.error('Missing (not defined in any env source):', true);
+    missingErrors.forEach((issue) => {
+      Logger.errorItem(issue.varName, 2);
+      if (issue.locations && issue.locations.length > 0) {
+        Logger.info(`Used in: ${issue.locations.slice(0, 3).join(', ')}${issue.locations.length > 3 ? '...' : ''}`, true);
       }
-      for (const [category, vars] of grouped.entries()) {
-        Logger.info(`${category}: ${vars.join(', ')}`, true);
+    });
+    Logger.blank();
+  }
+
+  if (missingWarnings.length > 0) {
+    Logger.warning('Missing (not defined, but has fallback):', true);
+    missingWarnings.forEach((issue) => {
+      Logger.warningItem(issue.varName, 2);
+      if (issue.locations && issue.locations.length > 0) {
+        Logger.info(`Used in: ${issue.locations.slice(0, 3).join(', ')}${issue.locations.length > 3 ? '...' : ''}`, true);
       }
-      Logger.blank();
+    });
+    Logger.blank();
+  }
+
+  if (unusedIssues.length > 0) {
+    Logger.info('Unused variables:', true);
+    unusedIssues.forEach((issue) => {
+      Logger.infoItem(issue.varName, 2);
+    });
+    Logger.blank();
+  }
+
+  // Show skipped runtime variables in non-strict mode
+  if (!strictMode && skippedRuntimeVars.length > 0) {
+    Logger.info('Skipped known runtime/ignored variables (use --strict to show):', true);
+    // Group by category
+    const grouped = new Map<string, string[]>();
+    for (const { varName, category } of skippedRuntimeVars) {
+      if (!grouped.has(category)) {
+        grouped.set(category, []);
+      }
+      grouped.get(category)!.push(varName);
     }
+    for (const [category, vars] of grouped.entries()) {
+      Logger.info(`${category}: ${vars.join(', ')}`, true);
+    }
+    Logger.blank();
   }
 
   // Display summary
   Logger.divider();
-  if (allIssues.length === 0) {
+  if (result.issues.length === 0) {
     Logger.summary('No issues found! All environment variables are in sync.');
     return { success: true, issues: [] };
   }
 
   // Count issues by severity
-  const errorCount = allIssues.filter(i => i.severity === 'error').length;
-  const warningCount = allIssues.filter(i => i.severity === 'warning').length;
-  const infoCount = allIssues.filter(i => i.severity === 'info').length;
+  const errorCount = result.issues.filter(i => i.severity === 'error').length;
+  const warningCount = result.issues.filter(i => i.severity === 'warning').length;
+  const infoCount = result.issues.filter(i => i.severity === 'info').length;
 
   // Summary line matching Pro format
   const parts: string[] = [];
@@ -336,58 +212,20 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean; det
     process.exit(1);
   }
 
-  return { success: false, issues: allIssues };
+  return { success: false, issues: result.issues };
 }
 
-async function scanDirectoryForVars(
+/**
+ * Scan all code files in the project for environment variable usage
+ */
+async function scanAllCodeForVars(
   rootDir: string,
-  targetDir: string,
   scanner: CodeScanner,
   excludePatterns: string[] = []
 ): Promise<Map<string, { locations: string[], hasFallback: boolean }>> {
   const envVars = new Map<string, { locations: string[], hasFallback: boolean }>();
 
-  // Find all code files in this directory and subdirectories
-  const relativeDir = path.relative(rootDir, targetDir);
-  const pattern = relativeDir ? `${relativeDir}/**/*.{js,ts,jsx,tsx,mjs,cjs}` : '**/*.{js,ts,jsx,tsx,mjs,cjs}';
-
-  const defaultIgnore = ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**'];
-  const customIgnore = excludePatterns.map(p => p.includes('*') ? p : `**/${p}/**`);
-
-  const files = await glob(pattern, {
-    cwd: rootDir,
-    ignore: [...defaultIgnore, ...customIgnore],
-    absolute: true,
-  });
-
-  for (const file of files) {
-    const vars = await scanner.scanFile(file);
-    for (const [varName, hasFallback] of vars.entries()) {
-      const relativePath = path.relative(rootDir, file);
-      if (!envVars.has(varName)) {
-        envVars.set(varName, { locations: [], hasFallback: false });
-      }
-      const entry = envVars.get(varName)!;
-      entry.locations.push(relativePath);
-      entry.hasFallback = entry.hasFallback || hasFallback;
-    }
-  }
-
-  return envVars;
-}
-
-// Scan only code files (JS/TS), not including serverless.yml as a source
-async function scanDirectoryForCodeVars(
-  rootDir: string,
-  targetDir: string,
-  scanner: CodeScanner,
-  excludePatterns: string[] = []
-): Promise<Map<string, { locations: string[], hasFallback: boolean }>> {
-  const envVars = new Map<string, { locations: string[], hasFallback: boolean }>();
-
-  // Find all code files in this directory only (not subdirectories for serverless)
-  const relativeDir = path.relative(rootDir, targetDir);
-  const pattern = relativeDir ? `${relativeDir}/**/*.{js,ts,jsx,tsx,mjs,cjs}` : '**/*.{js,ts,jsx,tsx,mjs,cjs}';
+  const pattern = '**/*.{js,ts,jsx,tsx,mjs,cjs}';
 
   const defaultIgnore = ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**'];
   const customIgnore = excludePatterns.map(p => p.includes('*') ? p : `**/${p}/**`);
