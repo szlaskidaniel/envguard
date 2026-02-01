@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { glob } from 'glob';
+import chalk from 'chalk';
 import { CodeScanner } from '../scanner/codeScanner';
 import { EnvParser, EnvEntry } from '../parser/envParser';
 import { ServerlessParser } from '../parser/serverlessParser';
@@ -42,8 +43,22 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean; det
     return { success: false, issues: [] };
   }
 
-  Logger.success(`Found ${envFiles.length} .env file(s) and ${serverlessFiles.length} serverless.yml file(s)`);
-  Logger.blank();
+  // Print env sources being scanned (matching Pro output style)
+  const sources: string[] = [];
+  for (const envFile of envFiles) {
+    sources.push(path.relative(rootDir, envFile));
+  }
+  for (const serverlessFile of serverlessFiles) {
+    sources.push(path.relative(rootDir, serverlessFile));
+  }
+
+  if (sources.length > 0) {
+    Logger.info('Scanning env sources:');
+    sources.forEach(s => {
+      console.log(chalk.dim(`  • ${s}`));
+    });
+    Logger.blank();
+  }
 
   const parser = new EnvParser();
   const serverlessParser = new ServerlessParser();
@@ -299,18 +314,12 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean; det
   const warningCount = allIssues.filter(i => i.severity === 'warning').length;
   const infoCount = allIssues.filter(i => i.severity === 'info').length;
 
-  Logger.blank();
-  if (errorCount > 0) {
-    Logger.error(`Errors: ${errorCount}`, false);
-  }
-  if (warningCount > 0) {
-    Logger.warning(`Warnings: ${warningCount}`, false);
-  }
-  if (infoCount > 0) {
-    Logger.info(`Info: ${infoCount}`, false);
-  }
-  Logger.blank();
-  Logger.warning(`Total: ${allIssues.length} issue(s) across ${envFiles.length + serverlessFiles.length} location(s)`);
+  // Summary line matching Pro format
+  const parts: string[] = [];
+  if (errorCount > 0) parts.push(chalk.red(`Errors: ${errorCount}`));
+  if (warningCount > 0) parts.push(chalk.yellow(`Warnings: ${warningCount}`));
+  if (infoCount > 0) parts.push(chalk.blue(`Info: ${infoCount}`));
+  console.log(parts.join('  '));
   Logger.blank();
 
   // Suggest fix
