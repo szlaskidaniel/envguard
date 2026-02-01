@@ -41,24 +41,9 @@ export class EnvAnalyzer {
       }
     }
 
-    // Issue 3: Variables used in code but not in .env.example
-    for (const [varName, usage] of usedVars.entries()) {
-      if (!exampleVars.has(varName)) {
-        // If detectFallbacks is enabled and variable has a fallback, it's less critical for documentation
-        const severity = (detectFallbacks && usage.hasFallback) ? 'info' : 'warning';
-        const details = (detectFallbacks && usage.hasFallback)
-          ? `Used in code with fallback but missing from .env.example`
-          : `Used in code but missing from .env.example`;
-
-        issues.push({
-          type: 'undocumented',
-          severity,
-          varName,
-          details,
-          locations: usage.locations,
-        });
-      }
-    }
+    // Note: We intentionally don't report "undocumented" issues (missing from .env.example)
+    // The .env.example file is for documentation purposes only and missing entries
+    // should not be treated as errors or warnings. Use `envguard fix` to generate it.
 
     return {
       issues,

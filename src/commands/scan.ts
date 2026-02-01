@@ -219,10 +219,9 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean; det
     const definedVars = parser.parse(envFilePath);
     Logger.info(`Found ${definedVars.size} variable(s) in .env`, true);
 
-    // Step 5: Parse .env.example
+    // Step 5: Parse .env.example (for documentation checking only, not as a source)
     const examplePath = path.join(envDir, '.env.example');
     const exampleVars = parser.parseExample(examplePath);
-    Logger.info(`Found ${exampleVars.size} variable(s) in .env.example`, true);
     Logger.blank();
 
     // Step 6: Analyze and find issues
@@ -233,8 +232,6 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean; det
       const missingErrors = result.issues.filter(i => i.type === 'missing' && i.severity === 'error');
       const missingWarnings = result.issues.filter(i => i.type === 'missing' && i.severity === 'warning');
       const unusedIssues = result.issues.filter(i => i.type === 'unused');
-      const undocumentedWarnings = result.issues.filter(i => i.type === 'undocumented' && i.severity === 'warning');
-      const undocumentedInfo = result.issues.filter(i => i.type === 'undocumented' && i.severity === 'info');
 
       if (missingErrors.length > 0) {
         Logger.error('Missing from .env:', true);
@@ -261,22 +258,6 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean; det
       if (unusedIssues.length > 0) {
         Logger.info('Unused variables:', true);
         unusedIssues.forEach((issue) => {
-          Logger.infoItem(issue.varName, 2);
-        });
-        Logger.blank();
-      }
-
-      if (undocumentedWarnings.length > 0) {
-        Logger.warning('Missing from .env.example:', true);
-        undocumentedWarnings.forEach((issue) => {
-          Logger.warningItem(issue.varName, 2);
-        });
-        Logger.blank();
-      }
-
-      if (undocumentedInfo.length > 0) {
-        Logger.info('Missing from .env.example (with fallback):', true);
-        undocumentedInfo.forEach((issue) => {
           Logger.infoItem(issue.varName, 2);
         });
         Logger.blank();
