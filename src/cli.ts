@@ -6,13 +6,14 @@ import { fixCommand } from './commands/fix';
 import { checkCommand } from './commands/check';
 import { installHookCommand, uninstallHookCommand } from './commands/install-hook';
 import { Logger } from './utils/logger';
+import { version } from '../package.json';
 
 const program = new Command();
 
 program
   .name('envguard')
   .description('Keep your environment variables in sync with your codebase')
-  .version('0.1.0');
+  .version(version);
 
 program
   .command('scan')
