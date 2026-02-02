@@ -195,55 +195,6 @@ jobs:
 
 **That's it!** No installation needed - `npx` downloads EnvGuard on demand.
 
-### Advanced Setup - With PR Comments
-
-Get automatic comments on pull requests when issues are found:
-
-```yaml
-name: Environment Variables Check
-
-on:
-  pull_request:
-    branches: [main]
-
-jobs:
-  envguard:
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
-      
-      - name: Run EnvGuard scan
-        id: envguard
-        continue-on-error: true
-        run: |
-          OUTPUT=$(npx @danielszlaski/envguard scan 2>&1)
-          echo "$OUTPUT"
-          echo "output<<EOF" >> $GITHUB_OUTPUT
-          echo "$OUTPUT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          npx @danielszlaski/envguard scan --ci
-      
-      - name: Comment on PR if failed
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '## ⚠️ EnvGuard Check Failed\n\n```\n${{ steps.envguard.outputs.output }}\n```\n\nPlease run `npx @danielszlaski/envguard fix` locally to generate `.env.example` files, then commit the changes.'
-            })
-```
 
 ### Strict Mode in CI
 
