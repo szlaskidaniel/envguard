@@ -5,14 +5,21 @@ import { ServerlessParser } from '../parser/serverlessParser';
 
 
 
+// Directories that should ALWAYS be excluded (never override these)
+const ALWAYS_EXCLUDE = ['node_modules', '.git'];
+
+// Default exclude patterns (can be overridden by user config)
+const DEFAULT_EXCLUDE = ['dist', 'build'];
+
 export class CodeScanner {
   private rootDir: string;
   private excludePatterns: string[];
   private serverlessParser: ServerlessParser;
 
-  constructor(rootDir: string, excludePatterns: string[] = ['node_modules', 'dist', 'build', '.git']) {
+  constructor(rootDir: string, excludePatterns: string[] = DEFAULT_EXCLUDE) {
     this.rootDir = rootDir;
-    this.excludePatterns = excludePatterns;
+    // Always exclude node_modules and .git, then add user patterns
+    this.excludePatterns = [...new Set([...ALWAYS_EXCLUDE, ...excludePatterns])];
     this.serverlessParser = new ServerlessParser();
   }
 
