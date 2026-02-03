@@ -3,7 +3,6 @@
 import { Command } from 'commander';
 import { scanCommand } from './commands/scan';
 import { fixCommand } from './commands/fix';
-import { checkCommand } from './commands/check';
 import { installHookCommand, uninstallHookCommand } from './commands/install-hook';
 import { Logger } from './utils/logger';
 import { version } from '../package.json';
@@ -53,35 +52,6 @@ program
   .action(async () => {
     try {
       await fixCommand();
-    } catch (error) {
-      Logger.error(`${error}`);
-      process.exit(1);
-    }
-  });
-
-program
-  .command('check')
-  .description('Check for issues (alias for scan --ci)')
-  .option('--strict', 'Report all variables including known runtime variables (AWS_REGION, NODE_ENV, etc.)')
-  .option('--no-detect-fallbacks', 'Treat all missing variables as errors, ignoring fallback detection')
-  .option('--exclude <patterns>', 'Comma-separated patterns to exclude (merged with config exclude)')
-  .option('--ignore-vars <vars>', 'Comma-separated list of variables to ignore (merged with ignoreVars from config)')
-  .action(async (cmd, command) => {
-    try {
-      const options: any = {
-        ci: true,
-        strict: cmd.strict,
-        exclude: cmd.exclude,
-        ignoreVars: cmd.ignoreVars
-      };
-
-      // Check if the --no-detect-fallbacks flag was explicitly provided
-      const flagProvided = command.parent?.rawArgs.some((arg: string) => arg.includes('detect-fallback'));
-      if (flagProvided) {
-        options.detectFallbacks = cmd.detectFallbacks;
-      }
-
-      await scanCommand(options);
     } catch (error) {
       Logger.error(`${error}`);
       process.exit(1);

@@ -234,8 +234,8 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean; det
     Logger.blank();
   }
 
-  // Exit with error code in CI mode
-  if (options.ci) {
+  // Exit with error code in CI mode only if there are actual errors
+  if (options.ci && errorCount > 0) {
     Logger.error('Issues found. Exiting with error code 1.');
     Logger.blank();
     process.exit(1);

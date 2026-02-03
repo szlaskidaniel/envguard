@@ -17,7 +17,7 @@ EnvGuard automatically:
 - Scans your codebase for `process.env.*` usage
 - Compares with your `.env` and `.env.example` files
 - **Supports Serverless Framework** - scans `serverless.yml` environment configurations
-- Alerts you to missing, unused, or undocumented variables
+- Alerts you to missing, unused, or hardcoded variables
 - Auto-generates `.env.example` with helpful comments
 - **Supports multiple `.env` files** in subdirectories (monorepo-friendly!)
 
@@ -59,7 +59,7 @@ envguard install-hook --type pre-push
 envguard install-hook --force
 ```
 
-Once installed, the hook will automatically run `envguard check` before each commit (or push). If issues are found, the commit/push will be blocked until you fix them.
+Once installed, the hook will automatically run `envguard scan --ci` before each commit (or push). If issues are found, the commit/push will be blocked until you fix them.
 
 **Bypass the hook** when needed:
 ```bash
@@ -77,7 +77,7 @@ envguard uninstall-hook --type pre-push
 
 **How it works:**
 - The hook creates a script in `.git/hooks/pre-commit` (or `pre-push`)
-- Before each commit/push, it runs `envguard check`
+- Before each commit/push, it runs `envguard scan --ci`
 - If issues are found, the operation is blocked
 - Team members need to install the hook individually (it's not tracked in git)
 
@@ -85,37 +85,39 @@ envguard uninstall-hook --type pre-push
 
 ```bash
 envguard scan
+
+# Exclude specific file patterns from scanning
+envguard scan --exclude "tests/**,scripts/**"
+
+# Ignore specific variables (merged with config ignoreVars)
+envguard scan --ignore-vars MY_VAR,ANOTHER_VAR
 ```
 
 Example output:
 
 ```
-✔ Found 1 .env file(s) and 0 serverless.yml file(s)
+Loaded config from ../.envguardrc.json
 
-Checking ./
 
-   Found 12 variable(s) used in this scope
-   Found 10 variable(s) in .env
-   Found 8 variable(s) in .env.example
+Scanning env sources:
+  • serverless.yml
 
-   ✖ Missing from .env:
-      • STRIPE_SECRET_KEY
-   Used in: src/payment.js, src/checkout.ts
-      • API_KEY
-   Used in: src/api/client.ts
+   Unused variables:
+      • NODE_ENV
+      • STAGE
+      • OKTA_DOMAIN
+      • OKTA_CLIENT_ID      
 
-   ⚠ Unused variables:
-      • OLD_API_URL
-
-   Missing from .env.example:
-      • DATABASE_URL
-      • JWT_SECRET
+   Skipped known runtime/ignored variables (use --strict to show):
+   Custom (from config/CLI): LOCALHOST, STAGE
+   Serverless Framework: IS_OFFLINE, SLS_OFFLINE
+   CI/CD: CI
+   AWS Lambda: AWS_REGION
 
 ──────────────────────────────────────────────────
+Info: 5
 
-⚠ Total: 5 issue(s) across 1 location(s)
-
-Run `envguard fix` to auto-generate .env.example
+Run `envguard fix` to auto-generate .env.example files
 ```
 
 ### Auto-generate .env.example
@@ -151,13 +153,13 @@ PORT=
 
 ### CI/CD Integration
 
-Use the `check` command in your CI pipeline to fail builds if environment variables are out of sync:
+Use the `--ci` flag in your CI pipeline to fail builds if environment variables are out of sync:
 
 ```bash
-envguard check
+envguard scan --ci
 ```
 
-This is equivalent to `envguard scan --ci` and will exit with code 1 if issues are found.
+This will exit with code 1 if issues are found.
 
 ## GitHub Actions Setup
 
@@ -319,7 +321,7 @@ EnvGuard works out of the box with sensible defaults. It automatically excludes:
 
 ### Custom Configuration
 
-Create a `.envguardrc.json` file in your project root to customize behavior:
+Create a configuration file in your project root. The following file names are recognised (in priority order): `.envguardrc.json`, `.envguardrc`, `envguard.config.json`, or a `"envguard"` key in `package.json`.
 
 ```json
 {
@@ -424,6 +426,19 @@ Not all missing environment variables are equal. Variables with defensive fallba
 
 Fallback detection uses regex patterns and catches common cases (~80% of real-world usage). Complex patterns like function calls with fallbacks or deeply nested conditionals may not be detected. For strict validation, use `--no-detect-fallbacks` or set `detectFallbacks: false` in your config.
 
+### Hardcoded Value Detection
+
+EnvGuard detects environment variables that are assigned directly in code instead of being read from the environment. These are reported as warnings because the value exists at runtime, but the pattern itself is a code smell — it bypasses `.env` management entirely.
+
+**Detected patterns:**
+
+```javascript
+process.env.MY_VAR = 'some-value';       // WARNING — hardcoded assignment
+process.env['API_KEY'] = 'sk_live_...';  // WARNING — hardcoded assignment
+```
+
+Hardcoded assignments are reported in their own group in the scan output, separate from missing or unused variables.
+
 ### Monorepo Support
 
 EnvGuard automatically detects all `.env` files in your project, including subdirectories. When you run `envguard fix`, it creates a `.env.example` file next to each `.env` file it finds.
@@ -490,7 +505,7 @@ Checking src/lambda/serverless.yml
 - **External references** - Detects SSM parameters, Secrets Manager, CloudFormation outputs
 - **Function-level variables** - Scans both provider-level and function-specific environment vars
 - **Smart filtering** - Automatically skips AWS/runtime variables (disable with `--strict`)
-- **CI/CD validation** - Use `envguard check` to enforce serverless config completeness
+- **CI/CD validation** - Use `envguard scan --ci` to enforce serverless config completeness
 
 ## Commands
 
@@ -498,10 +513,9 @@ Checking src/lambda/serverless.yml
 - `envguard scan --ci` - Scan and exit with error code if issues found
 - `envguard scan --strict` - Report all variables including known runtime variables
 - `envguard scan --no-detect-fallbacks` - Treat all missing variables as errors (ignore fallback detection)
+- `envguard scan --exclude <patterns>` - Comma-separated glob patterns to exclude (merged with config `exclude`)
+- `envguard scan --ignore-vars <vars>` - Comma-separated variables to ignore (merged with config `ignoreVars`)
 - `envguard fix` - Auto-generate `.env.example`
-- `envguard check` - Alias for `scan --ci`
-- `envguard check --strict` - Check with strict mode enabled
-- `envguard check --no-detect-fallbacks` - Check without fallback detection
 - `envguard install-hook` - Install a Git pre-commit hook to run checks automatically
 - `envguard install-hook --type pre-push` - Install a pre-push hook instead
 - `envguard install-hook --force` - Overwrite existing hook if present

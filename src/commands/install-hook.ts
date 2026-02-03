@@ -49,7 +49,7 @@ export async function installHookCommand(options: InstallHookOptions = {}) {
     fs.writeFileSync(hookPath, hookContent, { mode: 0o755 });
     Logger.success(`Installed ${hookType} hook successfully!`);
     Logger.blank();
-    Logger.info('The hook will run `envguard check` automatically before each ' +
+    Logger.info('The hook will run `envguard scan --ci` automatically before each ' +
                 (hookType === 'pre-commit' ? 'commit' : 'push'), true);
     Logger.info('To bypass the hook, use: git ' +
                 (hookType === 'pre-commit' ? 'commit' : 'push') + ' --no-verify', true);
@@ -77,7 +77,7 @@ export async function uninstallHookCommand(options: { type?: HookType } = {}) {
 
   // Check if it's our hook
   const hookContent = fs.readFileSync(hookPath, 'utf-8');
-  if (!hookContent.includes('envguard check')) {
+  if (!hookContent.includes('envguard scan --ci') && !hookContent.includes('envguard check')) {
     Logger.warning(`The ${hookType} hook exists but was not created by envguard.`);
     Logger.info('Manual removal required if you want to delete it.', true);
     Logger.blank();
@@ -108,8 +108,8 @@ function generateHookScript(hookType: HookType): string {
 
 echo "Running EnvGuard environment variable check..."
 
-# Run envguard check
-npx envguard check
+# Run envguard scan --ci
+npx envguard scan --ci
 
 # Capture the exit code
 EXIT_CODE=$?
