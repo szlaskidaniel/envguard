@@ -3,7 +3,7 @@ import { EnvEntry } from '../parser/envParser';
 
 export class EnvAnalyzer {
   analyze(
-    usedVars: Map<string, { locations: string[], hasFallback: boolean }>,
+    usedVars: Map<string, { locations: string[], hasFallback: boolean, isHardcoded?: boolean }>,
     definedVars: Map<string, EnvEntry>,
     exampleVars: Set<string>,
     detectFallbacks: boolean = true
@@ -13,11 +13,16 @@ export class EnvAnalyzer {
     // Issue 1: Variables used in code but missing from .env
     for (const [varName, usage] of usedVars.entries()) {
       if (!definedVars.has(varName)) {
-        // If detectFallbacks is enabled and variable has a fallback, it's a WARNING, otherwise ERROR
-        const severity = (detectFallbacks && usage.hasFallback) ? 'warning' : 'error';
-        const details = (detectFallbacks && usage.hasFallback)
-          ? `Used in code with fallback/default but not defined in .env`
-          : `Used in code but not defined in .env`;
+        // If detectFallbacks is enabled and variable has a fallback or is hardcoded, it's a WARNING, otherwise ERROR
+        const severity = (detectFallbacks && (usage.hasFallback || usage.isHardcoded)) ? 'warning' : 'error';
+        let details: string;
+        if (usage.isHardcoded) {
+          details = `Hardcoded in code (assigned programmatically)`;
+        } else if (detectFallbacks && usage.hasFallback) {
+          details = `Used in code with fallback/default but not defined in .env`;
+        } else {
+          details = `Used in code but not defined in .env`;
+        }
 
         issues.push({
           type: 'missing',

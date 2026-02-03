@@ -23,8 +23,8 @@ export class CodeScanner {
     this.serverlessParser = new ServerlessParser();
   }
 
-  async scan(): Promise<Map<string, { locations: string[], hasFallback: boolean }>> {
-    const envVars = new Map<string, { locations: string[], hasFallback: boolean }>();
+  async scan(): Promise<Map<string, { locations: string[], hasFallback: boolean, isHardcoded?: boolean }>> {
+    const envVars = new Map<string, { locations: string[], hasFallback: boolean, isHardcoded?: boolean }>();
 
     // Scan for JavaScript/TypeScript files
     // Handle both simple names (e.g., 'node_modules') and glob patterns (e.g., '**/tmp/**')
@@ -40,7 +40,7 @@ export class CodeScanner {
 
     for (const file of files) {
       const vars = await this.scanFile(file);
-      for (const [varName, hasFallback] of vars.entries()) {
+      for (const [varName, info] of vars.entries()) {
         const relativePath = path.relative(this.rootDir, file);
         if (!envVars.has(varName)) {
           envVars.set(varName, { locations: [], hasFallback: false });
@@ -48,7 +48,11 @@ export class CodeScanner {
         const entry = envVars.get(varName)!;
         entry.locations.push(relativePath);
         // If ANY usage has a fallback, mark it as having a fallback
-        entry.hasFallback = entry.hasFallback || hasFallback;
+        entry.hasFallback = entry.hasFallback || info.hasFallback;
+        // If ANY usage is a hardcoded assignment, mark it
+        if (info.isHardcoded) {
+          entry.isHardcoded = true;
+        }
       }
     }
 
@@ -68,21 +72,41 @@ export class CodeScanner {
     return envVars;
   }
 
-  async scanFile(filePath: string): Promise<Map<string, boolean>> {
-    const envVars = new Map<string, boolean>();
+  async scanFile(filePath: string): Promise<Map<string, { hasFallback: boolean, isHardcoded?: boolean }>> {
+    const envVars = new Map<string, { hasFallback: boolean, isHardcoded?: boolean }>();
 
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
+
+      // Track hardcoded assignments separately first
+      const hardcodedVars = new Set<string>();
+
+      // Pattern 5b: Hardcoded assignments - process.env.VAR = 'value' or process.env['VAR'] = 'value'
+      // These are setting the env var programmatically, so they should be treated as having a value
+      const hardcodedAssignmentPattern = /process\.env\.([A-Z_][A-Z0-9_]*)\s*=/g;
+      const hardcodedBracketAssignmentPattern = /process\.env\[['"]([A-Z_][A-Z0-9_]*)['"\]]\s*=/g;
+
+      let match;
+      while ((match = hardcodedAssignmentPattern.exec(content)) !== null) {
+        hardcodedVars.add(match[1]);
+        envVars.set(match[1], { hasFallback: true, isHardcoded: true });
+      }
+
+      while ((match = hardcodedBracketAssignmentPattern.exec(content)) !== null) {
+        hardcodedVars.add(match[1]);
+        envVars.set(match[1], { hasFallback: true, isHardcoded: true });
+      }
 
       // Pattern 1: process.env.VAR_NAME with fallback checks
       // Matches: process.env.VAR || 'default'
       //          process.env.VAR ?? 'default'
       //          process.env.VAR ? x : y
       const processEnvWithFallbackPattern = /process\.env\.([A-Z_][A-Z0-9_]*)\s*(\|\||&&|\?\?|\?)/g;
-      let match;
 
       while ((match = processEnvWithFallbackPattern.exec(content)) !== null) {
-        envVars.set(match[1], true); // Has fallback
+        if (!envVars.has(match[1])) {
+          envVars.set(match[1], { hasFallback: true });
+        }
       }
 
       // Pattern 2: process.env.VAR in conditional checks
@@ -92,7 +116,7 @@ export class CodeScanner {
 
       while ((match = conditionalPattern.exec(content)) !== null) {
         if (!envVars.has(match[1])) {
-          envVars.set(match[1], true); // Has conditional check
+          envVars.set(match[1], { hasFallback: true }); // Has conditional check
         }
       }
 
@@ -107,7 +131,7 @@ export class CodeScanner {
           const hasDefault = parts.length > 1;
           if (/^[A-Z_][A-Z0-9_]*$/.test(varName)) {
             if (!envVars.has(varName)) {
-              envVars.set(varName, hasDefault);
+              envVars.set(varName, { hasFallback: hasDefault });
             }
           }
         });
@@ -118,7 +142,7 @@ export class CodeScanner {
 
       while ((match = optionalChainingPattern.exec(content)) !== null) {
         if (!envVars.has(match[1])) {
-          envVars.set(match[1], true); // Has optional chaining
+          envVars.set(match[1], { hasFallback: true }); // Has optional chaining
         }
       }
 
@@ -126,7 +150,9 @@ export class CodeScanner {
       const processEnvBracketWithFallbackPattern = /process\.env\[['"]([A-Z_][A-Z0-9_]*)['"\]]\s*(\|\||&&|\?\?|\?)/g;
 
       while ((match = processEnvBracketWithFallbackPattern.exec(content)) !== null) {
-        envVars.set(match[1], true); // Has fallback
+        if (!envVars.has(match[1])) {
+          envVars.set(match[1], { hasFallback: true }); // Has fallback
+        }
       }
 
       // Pattern 6: Basic usage without any safety (process.env.VAR)
@@ -135,7 +161,7 @@ export class CodeScanner {
 
       while ((match = basicProcessEnvPattern.exec(content)) !== null) {
         if (!envVars.has(match[1])) {
-          envVars.set(match[1], false); // No fallback detected
+          envVars.set(match[1], { hasFallback: false }); // No fallback detected
         }
       }
 
@@ -144,7 +170,7 @@ export class CodeScanner {
 
       while ((match = basicBracketPattern.exec(content)) !== null) {
         if (!envVars.has(match[1])) {
-          envVars.set(match[1], false); // No fallback detected
+          envVars.set(match[1], { hasFallback: false }); // No fallback detected
         }
       }
 

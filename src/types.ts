@@ -22,7 +22,7 @@ export interface Issue {
 
 export interface ScanResult {
   issues: Issue[];
-  usedVars: Map<string, { locations: string[], hasFallback: boolean }>;
+  usedVars: Map<string, { locations: string[], hasFallback: boolean, isHardcoded?: boolean }>;
   definedVars: Set<string>;
   exampleVars: Set<string>;
 }

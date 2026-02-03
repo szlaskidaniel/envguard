@@ -110,7 +110,7 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean; det
   const allUsedVars = await scanAllCodeForVars(rootDir, scanner, config.exclude);
 
   // Filter out ignored variables based on config and CLI option
-  const usedVars = new Map<string, { locations: string[], hasFallback: boolean }>();
+  const usedVars = new Map<string, { locations: string[], hasFallback: boolean, isHardcoded?: boolean }>();
   const skippedRuntimeVars: Array<{ varName: string; category: string }> = [];
 
   // Build CLI ignore list
@@ -144,7 +144,8 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean; det
 
   // Group issues by type and severity
   const missingErrors = result.issues.filter(i => i.type === 'missing' && i.severity === 'error');
-  const missingWarnings = result.issues.filter(i => i.type === 'missing' && i.severity === 'warning');
+  const missingWarnings = result.issues.filter(i => i.type === 'missing' && i.severity === 'warning' && !i.details.includes('Hardcoded'));
+  const hardcodedWarnings = result.issues.filter(i => i.type === 'missing' && i.severity === 'warning' && i.details.includes('Hardcoded'));
   const unusedIssues = result.issues.filter(i => i.type === 'unused');
 
   // Display issues
@@ -165,6 +166,17 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean; det
       Logger.warningItem(issue.varName, 2);
       if (issue.locations && issue.locations.length > 0) {
         Logger.info(`Used in: ${issue.locations.slice(0, 3).join(', ')}${issue.locations.length > 3 ? '...' : ''}`, true);
+      }
+    });
+    Logger.blank();
+  }
+
+  if (hardcodedWarnings.length > 0) {
+    Logger.warning('Hardcoded values (assigned programmatically in code):', true);
+    hardcodedWarnings.forEach((issue) => {
+      Logger.warningItem(issue.varName, 2);
+      if (issue.locations && issue.locations.length > 0) {
+        Logger.info(`Set in: ${issue.locations.slice(0, 3).join(', ')}${issue.locations.length > 3 ? '...' : ''}`, true);
       }
     });
     Logger.blank();
@@ -239,8 +251,8 @@ async function scanAllCodeForVars(
   rootDir: string,
   scanner: CodeScanner,
   excludePatterns: string[] = []
-): Promise<Map<string, { locations: string[], hasFallback: boolean }>> {
-  const envVars = new Map<string, { locations: string[], hasFallback: boolean }>();
+): Promise<Map<string, { locations: string[], hasFallback: boolean, isHardcoded?: boolean }>> {
+  const envVars = new Map<string, { locations: string[], hasFallback: boolean, isHardcoded?: boolean }>();
 
   const pattern = '**/*.{js,ts,jsx,tsx,mjs,cjs}';
 
@@ -255,14 +267,17 @@ async function scanAllCodeForVars(
 
   for (const file of files) {
     const vars = await scanner.scanFile(file);
-    for (const [varName, hasFallback] of vars.entries()) {
+    for (const [varName, info] of vars.entries()) {
       const relativePath = path.relative(rootDir, file);
       if (!envVars.has(varName)) {
         envVars.set(varName, { locations: [], hasFallback: false });
       }
       const entry = envVars.get(varName)!;
       entry.locations.push(relativePath);
-      entry.hasFallback = entry.hasFallback || hasFallback;
+      entry.hasFallback = entry.hasFallback || info.hasFallback;
+      if (info.isHardcoded) {
+        entry.isHardcoded = true;
+      }
     }
   }
 
