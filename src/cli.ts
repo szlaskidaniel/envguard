@@ -22,13 +22,15 @@ program
   .option('--strict', 'Report all variables including known runtime variables (AWS_REGION, NODE_ENV, etc.)')
   .option('--no-detect-fallbacks', 'Treat all missing variables as errors, ignoring fallback detection')
   .option('--exclude <patterns>', 'Comma-separated patterns to exclude (merged with config exclude)')
+  .option('--ignore-vars <vars>', 'Comma-separated list of variables to ignore (merged with ignoreVars from config)')
   .action(async (cmd, command) => {
     try {
       // Build options object, only including detectFallbacks if the flag was used
       const options: any = {
         ci: cmd.ci,
         strict: cmd.strict,
-        exclude: cmd.exclude
+        exclude: cmd.exclude,
+        ignoreVars: cmd.ignoreVars
       };
 
       // Check if the --no-detect-fallbacks flag was explicitly provided
@@ -63,12 +65,14 @@ program
   .option('--strict', 'Report all variables including known runtime variables (AWS_REGION, NODE_ENV, etc.)')
   .option('--no-detect-fallbacks', 'Treat all missing variables as errors, ignoring fallback detection')
   .option('--exclude <patterns>', 'Comma-separated patterns to exclude (merged with config exclude)')
+  .option('--ignore-vars <vars>', 'Comma-separated list of variables to ignore (merged with ignoreVars from config)')
   .action(async (cmd, command) => {
     try {
       const options: any = {
         ci: true,
         strict: cmd.strict,
-        exclude: cmd.exclude
+        exclude: cmd.exclude,
+        ignoreVars: cmd.ignoreVars
       };
 
       // Check if the --no-detect-fallbacks flag was explicitly provided

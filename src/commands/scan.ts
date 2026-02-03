@@ -9,7 +9,7 @@ import { isKnownRuntimeVar, getRuntimeVarCategory } from '../constants/knownEnvV
 import { ConfigLoader } from '../config/configLoader';
 import { Logger } from '../utils/logger';
 
-export async function scanCommand(options: { ci?: boolean; strict?: boolean; detectFallbacks?: boolean; commandName?: string; exclude?: string }) {
+export async function scanCommand(options: { ci?: boolean; strict?: boolean; detectFallbacks?: boolean; commandName?: string; exclude?: string; ignoreVars?: string }) {
   const rootDir = process.cwd();
 
   // Load configuration with path info
@@ -109,19 +109,24 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean; det
   // Scan ALL code for environment variable usage
   const allUsedVars = await scanAllCodeForVars(rootDir, scanner, config.exclude);
 
-  // Filter out ignored variables based on config
+  // Filter out ignored variables based on config and CLI option
   const usedVars = new Map<string, { locations: string[], hasFallback: boolean }>();
   const skippedRuntimeVars: Array<{ varName: string; category: string }> = [];
 
+  // Build CLI ignore list
+  const cliIgnoreVars = new Set<string>(
+    options.ignoreVars ? options.ignoreVars.split(',').map(v => v.trim()) : []
+  );
+
   for (const [varName, usage] of allUsedVars.entries()) {
-    const isCustomIgnored = ConfigLoader.shouldIgnoreVar(varName, config);
+    const isCustomIgnored = ConfigLoader.shouldIgnoreVar(varName, config) || cliIgnoreVars.has(varName);
     const isRuntimeVar = isKnownRuntimeVar(varName);
 
     // In non-strict mode, skip known runtime variables and custom ignore vars
     if (strictMode || (!isRuntimeVar && !isCustomIgnored)) {
       usedVars.set(varName, usage);
     } else {
-      const category = isCustomIgnored ? 'Custom (from config)' : getRuntimeVarCategory(varName);
+      const category = isCustomIgnored ? 'Custom (from config/CLI)' : getRuntimeVarCategory(varName);
       if (category) {
         skippedRuntimeVars.push({ varName, category });
       }
