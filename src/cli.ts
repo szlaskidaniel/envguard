@@ -21,12 +21,14 @@ program
   .option('--ci', 'Exit with error code if issues found (for CI/CD)')
   .option('--strict', 'Report all variables including known runtime variables (AWS_REGION, NODE_ENV, etc.)')
   .option('--no-detect-fallbacks', 'Treat all missing variables as errors, ignoring fallback detection')
+  .option('--exclude <patterns>', 'Comma-separated patterns to exclude (merged with config exclude)')
   .action(async (cmd, command) => {
     try {
       // Build options object, only including detectFallbacks if the flag was used
       const options: any = {
         ci: cmd.ci,
-        strict: cmd.strict
+        strict: cmd.strict,
+        exclude: cmd.exclude
       };
 
       // Check if the --no-detect-fallbacks flag was explicitly provided
@@ -60,11 +62,13 @@ program
   .description('Check for issues (alias for scan --ci)')
   .option('--strict', 'Report all variables including known runtime variables (AWS_REGION, NODE_ENV, etc.)')
   .option('--no-detect-fallbacks', 'Treat all missing variables as errors, ignoring fallback detection')
+  .option('--exclude <patterns>', 'Comma-separated patterns to exclude (merged with config exclude)')
   .action(async (cmd, command) => {
     try {
       const options: any = {
         ci: true,
-        strict: cmd.strict
+        strict: cmd.strict,
+        exclude: cmd.exclude
       };
 
       // Check if the --no-detect-fallbacks flag was explicitly provided

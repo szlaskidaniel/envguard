@@ -26,6 +26,12 @@ export interface EnvGuardConfig {
   detectFallbacks?: boolean;
 }
 
+export interface ConfigLoadResult {
+  config: EnvGuardConfig;
+  /** Path to the config file that was loaded, or null if using defaults */
+  configPath: string | null;
+}
+
 const DEFAULT_CONFIG: EnvGuardConfig = {
   ignoreVars: [],
   exclude: [],
@@ -46,8 +52,17 @@ const CONFIG_FILE_NAMES = [
 export class ConfigLoader {
   /**
    * Load config from the project root directory
+   * @returns The config object (for backwards compatibility)
    */
   static loadConfig(rootDir: string): EnvGuardConfig {
+    return this.loadConfigWithPath(rootDir).config;
+  }
+
+  /**
+   * Load config from the project root directory with path information
+   * @returns Object containing both the config and the path it was loaded from
+   */
+  static loadConfigWithPath(rootDir: string): ConfigLoadResult {
     // Try to find config file
     const configPath = this.findConfigFile(rootDir);
 
@@ -57,20 +72,23 @@ export class ConfigLoader {
         const userConfig = JSON.parse(fileContent) as EnvGuardConfig;
 
         return {
-          ...DEFAULT_CONFIG,
-          ...userConfig,
-          ignoreVars: [
-            ...(DEFAULT_CONFIG.ignoreVars || []),
-            ...(userConfig.ignoreVars || []),
-          ],
-          exclude: [
-            ...(DEFAULT_CONFIG.exclude || []),
-            ...(userConfig.exclude || []),
-          ],
+          config: {
+            ...DEFAULT_CONFIG,
+            ...userConfig,
+            ignoreVars: [
+              ...(DEFAULT_CONFIG.ignoreVars || []),
+              ...(userConfig.ignoreVars || []),
+            ],
+            exclude: [
+              ...(DEFAULT_CONFIG.exclude || []),
+              ...(userConfig.exclude || []),
+            ],
+          },
+          configPath,
         };
       } catch (error) {
         console.warn(`Warning: Failed to parse config file ${configPath}:`, error);
-        return DEFAULT_CONFIG;
+        return { config: DEFAULT_CONFIG, configPath: null };
       }
     }
 
@@ -82,16 +100,19 @@ export class ConfigLoader {
         if (packageJson.envguard) {
           const userConfig = packageJson.envguard as EnvGuardConfig;
           return {
-            ...DEFAULT_CONFIG,
-            ...userConfig,
-            ignoreVars: [
-              ...(DEFAULT_CONFIG.ignoreVars || []),
-              ...(userConfig.ignoreVars || []),
-            ],
-            exclude: [
-              ...(DEFAULT_CONFIG.exclude || []),
-              ...(userConfig.exclude || []),
-            ],
+            config: {
+              ...DEFAULT_CONFIG,
+              ...userConfig,
+              ignoreVars: [
+                ...(DEFAULT_CONFIG.ignoreVars || []),
+                ...(userConfig.ignoreVars || []),
+              ],
+              exclude: [
+                ...(DEFAULT_CONFIG.exclude || []),
+                ...(userConfig.exclude || []),
+              ],
+            },
+            configPath: packageJsonPath,
           };
         }
       } catch (error) {
@@ -99,7 +120,7 @@ export class ConfigLoader {
       }
     }
 
-    return DEFAULT_CONFIG;
+    return { config: DEFAULT_CONFIG, configPath: null };
   }
 
   /**

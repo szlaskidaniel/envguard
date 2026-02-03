@@ -9,15 +9,26 @@ import { isKnownRuntimeVar, getRuntimeVarCategory } from '../constants/knownEnvV
 import { ConfigLoader } from '../config/configLoader';
 import { Logger } from '../utils/logger';
 
-export async function scanCommand(options: { ci?: boolean; strict?: boolean; detectFallbacks?: boolean; commandName?: string }) {
+export async function scanCommand(options: { ci?: boolean; strict?: boolean; detectFallbacks?: boolean; commandName?: string; exclude?: string }) {
   const rootDir = process.cwd();
 
-  // Load configuration
-  const config = ConfigLoader.loadConfig(rootDir);
+  // Load configuration with path info
+  const { config, configPath } = ConfigLoader.loadConfigWithPath(rootDir);
+
+  // Show info message if config was loaded from a file
+  if (configPath) {
+    const relativePath = path.relative(rootDir, configPath);
+    Logger.blank();
+    Logger.info(`Loaded config from ${relativePath}`);
+    Logger.blank();
+  }
 
   // CLI options override config file
   const strictMode = options.strict !== undefined ? options.strict : config.strict;
   const detectFallbacks = options.detectFallbacks !== undefined ? options.detectFallbacks : (config.detectFallbacks !== undefined ? config.detectFallbacks : true);
+
+  // Merge CLI --exclude patterns with config exclude patterns
+  const cliExcludePatterns = options.exclude ? options.exclude.split(',').map(p => p.trim()) : [];
 
   Logger.startSpinner('Scanning codebase for environment variables...');
 
@@ -28,6 +39,7 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean; det
     'build',
     '.git',
     ...(config.exclude || []),
+    ...cliExcludePatterns,
   ];
   const scanner = new CodeScanner(rootDir, excludePatterns);
   const envFiles = await scanner.findEnvFiles();
