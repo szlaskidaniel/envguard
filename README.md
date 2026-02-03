@@ -1,25 +1,45 @@
 # EnvGuard CLI
-**Static Analysis for Environment Variables**
+[![npm version](https://img.shields.io/npm/v/@danielszlaski/envguard.svg)](https://www.npmjs.com/package/@danielszlaski/envguard)
 
-Keep your environment variables in sync with your codebase.
+### Static analysis for environment variables you can actually trust
+
+EnvGuard helps you keep environment variables clean, documented, and consistent across your entire codebase.  
+No more guessing, broken deploys, or outdated `.env.example` files.
 
 
-## The Problem
 
-- `.env.example` is always out of sync with actual `.env`
-- New developers don't know what environment variables they need
-- Production secrets accidentally committed
-- Dead environment variables cluttering your config
+## Why EnvGuard exists
 
-## The Solution
+Environment variables tend to rot over time. Teams move fast, infrastructure evolves, and configuration quietly drifts.
 
-EnvGuard automatically:
-- Scans your codebase for `process.env.*` usage
-- Compares with your `.env` and `.env.example` files
-- **Supports Serverless Framework** - scans `serverless.yml` environment configurations
-- Alerts you to missing, unused, or hardcoded variables
-- Auto-generates `.env.example` with helpful comments
+Common pain points:
+- `.env.example` does not match real usage anymore
+- New developers waste time figuring out required variables
+- Secrets accidentally leak into repositories
+- Old variables linger forever with no owner
+- CI fails late due to missing configuration
+- Serverless configs and code fall out of sync
+
+EnvGuard was built to eliminate this entire class of problems automatically.
+
+
+
+## What EnvGuard does for you
+
+EnvGuard continuously validates how environment variables are **defined**, **used**, and **documented**.
+
+
+- Scans your codebase for environment variable usage
+- Compares usage with `.env` and `.env.example`
+- Detects missing, unused, and hardcoded variables
+- Understands fallback patterns and adjusts severity intelligently
+- Keeps `.env.example` files accurate and up to date
 - **Supports multiple `.env` files** in subdirectories (monorepo-friendly!)
+- Integrates cleanly into Git hooks and CI pipelines
+
+Result: fewer runtime surprises, faster onboarding, and safer releases.
+
+
 
 ## Installation
 
@@ -561,3 +581,177 @@ npm start scan
 ## License
 
 MIT 2026 Daniel Szlaski
+
+# EnvGuard CLI
+
+
+
+
+
+---
+
+## Supported platforms and frameworks
+
+- Node.js JavaScript and TypeScript
+- Serverless Framework projects
+- Monorepos with nested services
+- CI environments including GitHub Actions, GitLab CI, CircleCI, Travis
+
+---
+
+## Installation
+
+### Global installation
+
+```bash
+npm install -g @danielszlaski/envguard
+```
+
+Then run:
+```bash
+envguard scan
+```
+
+### No installation using npx
+
+```bash
+npx @danielszlaski/envguard scan
+```
+
+---
+
+## Core commands
+
+### Scan for issues
+
+```bash
+envguard scan
+```
+
+Finds:
+- Missing variables
+- Unused variables
+- Hardcoded assignments
+- Drift between code and configuration
+
+### Auto generate `.env.example`
+
+```bash
+envguard fix
+```
+
+Automatically creates or updates `.env.example` files with:
+- All variables actually used
+- Usage locations in code
+- Helpful format hints
+- Zero real secrets
+
+Each `.env.example` is generated next to its corresponding `.env`, making it ideal for monorepos.
+
+---
+
+## Smart severity detection
+
+EnvGuard understands intent.
+
+```js
+process.env.API_KEY          // ERROR
+process.env.PORT || 3000     // WARNING
+process.env.DEBUG && log()   // WARNING
+```
+
+- Errors indicate real runtime risk
+- Warnings highlight defensive or optional usage
+- Noise is reduced without hiding problems
+
+Fallback detection can be disabled if strict enforcement is required.
+
+---
+
+## Git hook integration
+
+Catch configuration issues before they ever reach CI.
+
+```bash
+envguard install-hook
+```
+
+Options:
+- Pre commit or pre push hooks
+- Forced overwrite
+- Easy removal
+
+Hooks run `envguard scan --ci` automatically and block commits when issues are found.
+
+---
+
+## CI and automation friendly
+
+EnvGuard is designed for automation first.
+
+```bash
+envguard scan --ci
+```
+
+- Exits with non zero code on errors
+- Perfect for CI pipelines
+- No interactive output
+- Fast and deterministic
+
+Works out of the box with GitHub Actions, GitLab CI, CircleCI, and more.
+
+---
+
+## Serverless Framework support
+
+EnvGuard treats `serverless.yml` as a first class configuration source.
+
+It:
+- Extracts provider and function level variables
+- Validates that all variables are actually used
+- Detects missing definitions referenced in code
+- Understands SSM, Secrets Manager, and CloudFormation references
+- Skips AWS runtime variables automatically unless strict mode is enabled
+
+This prevents silent misconfiguration in Lambda based systems.
+
+---
+
+## Configuration
+
+EnvGuard works without configuration, but can be customized via:
+- `.envguardrc.json`
+- `envguard.config.json`
+- `package.json`
+
+Example:
+```json
+{
+  "ignoreVars": ["COMPANY_INTERNAL_VAR"],
+  "strict": false,
+  "detectFallbacks": true,
+  "exclude": ["**/build/**"]
+}
+```
+
+Priority:
+CLI flags → config file → package.json → defaults
+
+---
+
+## Who EnvGuard is for
+
+EnvGuard is ideal for:
+- Teams onboarding new developers
+- Projects with growing configuration surface area
+- Serverless and microservice architectures
+- Repositories with strict CI requirements
+- Anyone tired of debugging missing env vars at runtime
+
+If environment variables ever broke your deploy, EnvGuard pays for itself immediately.
+
+---
+
+## License
+
+MIT © 2026 Daniel Szlaski
