@@ -481,25 +481,28 @@ Each `.env.example` only includes variables used in that directory and its subdi
 
 ## Serverless Framework Support
 
-EnvGuard can scan `serverless.yml` files as a standalone source of environment variable definitions. This is useful for AWS Lambda projects where environment variables are defined in the serverless configuration rather than `.env` files.
+EnvGuard treats `serverless.yml` as a first-class source of environment variables, so Lambda-focused teams can keep configuration and code in sync without maintaining parallel `.env` files.
 
-### How it works
+### How EnvGuard parses `serverless.yml`
 
-1. **Detects** `serverless.yml` files in your project
-2. **Extracts** environment variables from `provider.environment` and function-level `environment` sections
-3. **Validates** that all defined variables are actually used in your Lambda code
-4. **Reports** unused variables and missing definitions
+The built-in `src/parser/serverlessParser.ts` keeps things simple and predictable:
 
-### Example serverless.yml
+- `provider.environment` entries are read exactly as you define them, whether the value is hardcoded or points to something like `${ssm:/myapp/db-url}`.
+- Each `functions.<name>.environment` block is scanned independently, so function-specific overrides are preserved.
+- Every extracted variable is compared against actual usage in your code to highlight gaps.
+
+Example snippet that EnvGuard understands:
 
 ```yaml
 provider:
-  name: aws
-  runtime: nodejs20.x
   environment:
-    NODE_ENV: ${opt:stage}
-    API_KEY: ${ssm:/my-app/api-key}
-    DATABASE_URL: ${self:custom.dbUrl}
+    DATABASE_URL: ${ssm:/myapp/db-url}
+    API_KEY: hardcoded-value
+
+functions:
+  myFunction:
+    environment:
+      FUNCTION_VAR: some-value
 ```
 
 ### Scan output for serverless.yml
@@ -518,14 +521,23 @@ Checking src/lambda/serverless.yml
    Used in: src/lambda/handler.js
 ```
 
-### Key Features
+### Current parser limits
 
-- **No .env required** - serverless.yml is treated as a standalone configuration source
-- **CloudFormation intrinsic functions** - Supports `!Ref`, `!GetAtt`, `!Sub`, `!ImportValue`, and all CF functions
-- **External references** - Detects SSM parameters, Secrets Manager, CloudFormation outputs
-- **Function-level variables** - Scans both provider-level and function-specific environment vars
-- **Smart filtering** - Automatically skips AWS/runtime variables (disable with `--strict`)
-- **CI/CD validation** - Use `envguard scan --ci` to enforce serverless config completeness
+To keep the parser lightweight, a few parts of `serverless.yml` are intentionally ignored today:
+
+- `resources.Resources` blocks (such as ECS task definitions or standalone Lambdas)
+- Nested `${ssm:}` path resolution inside custom objects
+- `${secretsmanager:}` references
+- Nested secret keys like `secrets.host`
+
+If you rely on those sections, you can still run EnvGuard—it will simply skip them while continuing to validate every `provider.environment` and function-level environment entry that it finds.
+
+### Why it matters
+
+- **No .env required** – `serverless.yml` acts as the single source of truth
+- **Function-level coverage** – highlights mismatches between shared and per-function variables
+- **Smart filtering** – known AWS/runtime variables stay out of your reports (use `--strict` to include them)
+- **CI/CD friendly** – `envguard scan --ci` can block deployments when your configuration and code drift apart
 
 ## Commands
 
