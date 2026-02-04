@@ -18,7 +18,6 @@ export async function scanCommand(options: { ci?: boolean; strict?: boolean; det
   // Show info message if config was loaded from a file
   if (configPath) {
     const relativePath = path.relative(rootDir, configPath);
-    Logger.blank();
     Logger.info(`Loaded config from ${relativePath}`);
     Logger.blank();
   }

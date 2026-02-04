@@ -1,7 +1,7 @@
 {
   "name": "@danielszlaski/envguard",
   "version": "0.1.9",
-  "description": "CLI tool to keep environment variables in sync with your codebase",
+  "description": "EnvGuard - Keep your environment variables in sync with your codebase (Free version)",
   "main": "dist/index.js",
   "bin": {
     "envguard": "./dist/cli.js"

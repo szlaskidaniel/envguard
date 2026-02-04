@@ -1,18 +1,45 @@
 #!/usr/bin/env node
 
+import chalk from 'chalk';
 import { Command } from 'commander';
 import { scanCommand } from './commands/scan';
 import { fixCommand } from './commands/fix';
 import { installHookCommand, uninstallHookCommand } from './commands/install-hook';
 import { Logger } from './utils/logger';
-import { version } from '../package.json';
+import { description as packageDescription, version } from '../package.json';
 
 const program = new Command();
 
+let programHeaderPrinted = false;
+
+function printProgramHeader(writeToStderr: boolean = false): void {
+  if (programHeaderPrinted) return;
+  programHeaderPrinted = true;
+
+  const line = chalk.green(packageDescription);
+  if (writeToStderr) {
+    console.error(line);
+    return;
+  }
+  Logger.blank();
+  Logger.info(line);
+}
+
 program
   .name('envguard')
-  .description('Keep your environment variables in sync with your codebase')
+  .description('')
   .version(version);
+
+program.configureOutput({
+  writeOut: (str) => {
+    printProgramHeader(false);
+    process.stdout.write(str);
+  },
+  writeErr: (str) => {
+    printProgramHeader(true);
+    process.stderr.write(str);
+  }
+});
 
 program
   .command('scan')
@@ -24,6 +51,8 @@ program
   .option('--ignore-vars <vars>', 'Comma-separated list of variables to ignore (merged with ignoreVars from config)')
   .action(async (cmd, command) => {
     try {
+      printProgramHeader();
+
       // Build options object, only including detectFallbacks if the flag was used
       const options: any = {
         ci: cmd.ci,
@@ -51,6 +80,7 @@ program
   .description('Auto-generate .env.example from codebase')
   .action(async () => {
     try {
+      printProgramHeader();
       await fixCommand();
     } catch (error) {
       Logger.error(`${error}`);
@@ -65,6 +95,7 @@ program
   .option('--force', 'Overwrite existing hook if present')
   .action(async (cmd) => {
     try {
+      printProgramHeader();
       await installHookCommand({
         type: cmd.type,
         force: cmd.force
@@ -81,6 +112,7 @@ program
   .option('--type <type>', 'Hook type: pre-commit or pre-push (default: pre-commit)')
   .action(async (cmd) => {
     try {
+      printProgramHeader();
       await uninstallHookCommand({
         type: cmd.type
       });
