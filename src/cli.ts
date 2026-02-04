@@ -18,7 +18,8 @@ function printProgramHeader(writeToStderr: boolean = false): void {
 
   const line = chalk.green(packageDescription);
   if (writeToStderr) {
-    console.error(line);
+    // Match the "faded" header styling used in normal (non-error) output.
+    process.stderr.write(`\n${chalk.dim(line)}\n\n`);
     return;
   }
   Logger.blank();
@@ -70,6 +71,7 @@ program
 
       await scanCommand(options);
     } catch (error) {
+      Logger.blank();
       Logger.error(`${error}`);
       process.exit(1);
     }
@@ -83,6 +85,7 @@ program
       printProgramHeader();
       await fixCommand();
     } catch (error) {
+      Logger.blank();
       Logger.error(`${error}`);
       process.exit(1);
     }
@@ -101,6 +104,7 @@ program
         force: cmd.force
       });
     } catch (error) {
+      Logger.blank();
       Logger.error(`${error}`);
       process.exit(1);
     }
@@ -117,6 +121,7 @@ program
         type: cmd.type
       });
     } catch (error) {
+      Logger.blank();
       Logger.error(`${error}`);
       process.exit(1);
     }
