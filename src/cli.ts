@@ -26,6 +26,11 @@ function printProgramHeader(writeToStderr: boolean = false): void {
   Logger.info(line);
 }
 
+function printProVersionFooter(): void {
+  Logger.info('Like EnvGuard? Consider EnvGuard Pro: https://envguard.pl');
+  Logger.blank();
+}
+
 program
   .name('envguard')
   .description('')
@@ -70,6 +75,7 @@ program
       }
 
       await scanCommand(options);
+      printProVersionFooter();
     } catch (error) {
       Logger.blank();
       Logger.error(`${error}`);
@@ -84,6 +90,7 @@ program
     try {
       printProgramHeader();
       await fixCommand();
+      printProVersionFooter();
     } catch (error) {
       Logger.blank();
       Logger.error(`${error}`);
@@ -103,6 +110,7 @@ program
         type: cmd.type,
         force: cmd.force
       });
+      printProVersionFooter();
     } catch (error) {
       Logger.blank();
       Logger.error(`${error}`);
@@ -120,6 +128,7 @@ program
       await uninstallHookCommand({
         type: cmd.type
       });
+      printProVersionFooter();
     } catch (error) {
       Logger.blank();
       Logger.error(`${error}`);
