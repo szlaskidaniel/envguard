@@ -39,6 +39,18 @@ EnvGuard continuously validates how environment variables are **defined**, **use
 
 Result: fewer runtime surprises, faster onboarding, and safer releases.
 
+## Need More Functionality? Consider EnvGuard Pro
+
+If your team needs more than local/basic checks, EnvGuard Pro is the recommended option: https://envguard.pl
+
+What stands out in Pro (from envguard.pl):
+- **SARIF output for GitHub Security** (`--format sarif`) for CI/compliance workflows
+- **AWS validation** (`--aws`, `--aws-deep`) for SSM + Secrets checks with profile/region-aware context
+- **Shell env file support** (`envFiles` / `--env-files`) to scan `export` variables from scripts like `set-env.sh`
+- **Deeper Serverless/AWS coverage** across provider, function, and AWS resources sections, including nested secret lookups
+
+If you are looking for broader infrastructure coverage and CI-ready reporting, go with Pro.
+
 
 
 ## Installation
